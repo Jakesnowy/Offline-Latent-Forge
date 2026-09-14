@@ -179,6 +179,9 @@
     <string name="random_seed">ランダムシード(任意)</string>
     <string name="use_last_seed">最後に利用したシードを利用 (%s)</string>
     <string name="batch_count">生成枚数: %d</string>
+<string name="batch_seed_incompatible">シードを指定している間は連続生成を使用できません。シードをクリアすると連続生成が有効になります。</string>
+<string name="clear_seed">シードをクリア</string>
+<string name="acknowledge">了解</string>
     <string name="reproduce">コピー</string>
     <string name="reproduce_params_title">パラメータを再現</string>
     <string name="reproduce_params_hint">プロンプトページに適用する項目を選択してください。</string>

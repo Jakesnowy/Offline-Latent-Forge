@@ -179,6 +179,9 @@
     <string name="random_seed">랜덤 시드(선택 사항)</string>
     <string name="use_last_seed">마지막 시드 사용 (%s)</string>
     <string name="batch_count">배치 수: %d</string>
+<string name="batch_seed_incompatible">시드가 지정된 경우 배치 생성을 사용할 수 없습니다. 시드를 지우면 배치 생성이 활성화됩니다.</string>
+<string name="clear_seed">시드 지우기</string>
+<string name="acknowledge">확인</string>
     <string name="reproduce">재사용</string>
     <string name="reproduce_params_title">파라미터 재사용</string>
     <string name="reproduce_params_hint">프롬프트 페이지에 적용할 항목을 선택하세요.</string>

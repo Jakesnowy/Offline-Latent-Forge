@@ -35,7 +35,6 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Draw
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
@@ -116,6 +115,117 @@ internal fun RunPromptPage(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            RunAdvancedSettingsCard(
+                expanded = setupState.showAdvancedSettings,
+                onToggleExpanded = {
+                    setupState.showAdvancedSettings = !setupState.showAdvancedSettings
+                },
+                isSdxl = model?.usesFixedCanvas == true,
+                runOnCpu = model?.runOnCpu ?: false,
+                useImg2img = useImg2img,
+                isRunning = runState.isRunning,
+                aspectRatio = runState.aspectRatio,
+                availableResolutions = setupState.availableResolutions,
+                currentWidth = setupState.currentWidth,
+                currentHeight = setupState.currentHeight,
+                scheduler = runState.scheduler,
+                steps = runState.steps,
+                cfg = runState.cfg,
+                useOpenCL = runState.useOpenCL,
+                batchCounts = runState.batchCounts,
+                denoiseStrength = runState.denoiseStrength,
+                seed = runState.seed,
+                returnedSeed = runState.returnedSeed,
+                onAspectRatioSelected = { ratio ->
+                    if (!runState.isRunning && runState.aspectRatio != ratio) {
+                        runState.aspectRatio = ratio
+                        onClearImg2imgState()
+                        onSaveAllFields()
+                    }
+                },
+                onCustomAspectRatioClick = {
+                    if (!runState.isRunning) {
+                        runState.showCustomAspectRatioDialog = true
+                    }
+                },
+                onResolutionSelected = { resolution ->
+                    if (!runState.isRunning &&
+                        (
+                            resolution.width != setupState.currentWidth ||
+                                resolution.height != setupState.currentHeight
+                            )
+                    ) {
+                        setupState.pendingResolution = resolution
+                        setupState.showResolutionChangeDialog = true
+                    }
+                },
+                onSchedulerChange = { value ->
+                    runState.scheduler = value
+                    onSaveAllFields()
+                },
+                onStepsChange = onStepsChange,
+                onCfgChange = onCfgChange,
+                onSizeChange = onSizeChange,
+                onCpuSelected = {
+                    runState.useOpenCL = false
+                    onSaveAllFields()
+                },
+                onGpuSelected = { setupState.showOpenCLWarningDialog = true },
+                onBatchCountsChange = onBatchCountsChange,
+                onDenoiseStrengthChange = onDenoiseStrengthChange,
+                onSeedChange = onSeedChange,
+                onUseLastSeed = {
+                    runState.seed = runState.returnedSeed.toString()
+                    onSaveAllFields()
+                },
+                onImportFromClipboard = {
+                    val clipboard =
+                        context.getSystemService(
+                            Context.CLIPBOARD_SERVICE,
+                        ) as? ClipboardManager
+                    val raw = clipboard?.primaryClip
+                        ?.takeIf { it.itemCount > 0 }
+                        ?.getItemAt(0)
+                        ?.coerceToText(context)
+                        ?.toString()
+                    val imported = ParamShare.tryDecode(raw)
+                    if (imported != null) {
+                        shareState.pendingImport = imported
+                        shareState.clipboardImportChecked = true
+                    } else {
+                        Toast.makeText(
+                            context,
+                            msgImportNoParams,
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                    }
+                },
+                onShare = {
+                    val currentMode = when {
+                        img2ImgState.isInpaintMode -> GenerationMode.INPAINT
+                        runState.selectedImageUri != null -> GenerationMode.IMG2IMG
+                        else -> GenerationMode.TXT2IMG
+                    }
+                    shareState.shareSourceParams = GenerationParameters(
+                        steps = runState.steps.toInt(),
+                        cfg = runState.cfg,
+                        seed = runState.seed.toLongOrNull(),
+                        prompt = promptField.text,
+                        negativePrompt = negativePromptField.text,
+                        generationTime = null,
+                        width = setupState.currentWidth,
+                        height = setupState.currentHeight,
+                        runOnCpu = model?.runOnCpu ?: false,
+                        denoiseStrength = runState.denoiseStrength,
+                        useOpenCL = runState.useOpenCL,
+                        scheduler = runState.scheduler,
+                        mode = currentMode,
+                    )
+                    shareState.shareSourceModelId = modelId
+                },
+                onReset = { setupState.showResetConfirmDialog = true },
+            )
+
             AnimatedVisibility(
                 visible = resultState.intermediateBitmap == null,
                 enter = fadeIn() + expandVertically(expandFrom = Alignment.Top),
@@ -161,133 +271,6 @@ internal fun RunPromptPage(
                                         )
                                     }
                                 }
-                                TextButton(
-                                    onClick = { setupState.showAdvancedSettings = true },
-                                    contentPadding = PaddingValues(
-                                        horizontal = 8.dp,
-                                        vertical = 8.dp,
-                                    ),
-                                ) {
-                                    Text(
-                                        stringResource(R.string.advanced_settings),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        modifier = Modifier.padding(end = 4.dp),
-                                    )
-                                    Icon(
-                                        Icons.Default.Settings,
-                                        contentDescription = stringResource(R.string.settings),
-                                        modifier = Modifier.size(20.dp),
-                                    )
-                                }
-                            }
-                            if (setupState.showAdvancedSettings) {
-                                AdvancedSettingsDialog(
-                                    isSdxl = model?.usesFixedCanvas == true,
-                                    runOnCpu = model?.runOnCpu ?: false,
-                                    useImg2img = useImg2img,
-                                    isRunning = runState.isRunning,
-                                    aspectRatio = runState.aspectRatio,
-                                    availableResolutions = setupState.availableResolutions,
-                                    currentWidth = setupState.currentWidth,
-                                    currentHeight = setupState.currentHeight,
-                                    scheduler = runState.scheduler,
-                                    steps = runState.steps,
-                                    cfg = runState.cfg,
-                                    useOpenCL = runState.useOpenCL,
-                                    batchCounts = runState.batchCounts,
-                                    denoiseStrength = runState.denoiseStrength,
-                                    seed = runState.seed,
-                                    returnedSeed = runState.returnedSeed,
-                                    onAspectRatioSelected = { ratio ->
-                                        if (!runState.isRunning && runState.aspectRatio != ratio) {
-                                            runState.aspectRatio = ratio
-                                            onClearImg2imgState()
-                                            onSaveAllFields()
-                                        }
-                                    },
-                                    onCustomAspectRatioClick = {
-                                        if (!runState.isRunning) {
-                                            runState.showCustomAspectRatioDialog = true
-                                        }
-                                    },
-                                    onResolutionSelected = { resolution ->
-                                        if (!runState.isRunning &&
-                                            (
-                                                resolution.width != setupState.currentWidth ||
-                                                    resolution.height != setupState.currentHeight
-                                                )
-                                        ) {
-                                            setupState.pendingResolution = resolution
-                                            setupState.showResolutionChangeDialog = true
-                                        }
-                                    },
-                                    onSchedulerChange = { value ->
-                                        runState.scheduler = value
-                                        onSaveAllFields()
-                                    },
-                                    onStepsChange = onStepsChange,
-                                    onCfgChange = onCfgChange,
-                                    onSizeChange = onSizeChange,
-                                    onCpuSelected = {
-                                        runState.useOpenCL = false
-                                        onSaveAllFields()
-                                    },
-                                    onGpuSelected = { setupState.showOpenCLWarningDialog = true },
-                                    onBatchCountsChange = onBatchCountsChange,
-                                    onDenoiseStrengthChange = onDenoiseStrengthChange,
-                                    onSeedChange = onSeedChange,
-                                    onUseLastSeed = {
-                                        runState.seed = runState.returnedSeed.toString()
-                                        onSaveAllFields()
-                                    },
-                                    onImportFromClipboard = {
-                                        val clipboard =
-                                            context.getSystemService(
-                                                Context.CLIPBOARD_SERVICE,
-                                            ) as? ClipboardManager
-                                        val raw = clipboard?.primaryClip
-                                            ?.takeIf { it.itemCount > 0 }
-                                            ?.getItemAt(0)
-                                            ?.coerceToText(context)
-                                            ?.toString()
-                                        val imported = ParamShare.tryDecode(raw)
-                                        if (imported != null) {
-                                            shareState.pendingImport = imported
-                                            shareState.clipboardImportChecked = true
-                                        } else {
-                                            Toast.makeText(
-                                                context,
-                                                msgImportNoParams,
-                                                Toast.LENGTH_SHORT,
-                                            ).show()
-                                        }
-                                    },
-                                    onShare = {
-                                        val currentMode = when {
-                                            img2ImgState.isInpaintMode -> GenerationMode.INPAINT
-                                            runState.selectedImageUri != null -> GenerationMode.IMG2IMG
-                                            else -> GenerationMode.TXT2IMG
-                                        }
-                                        shareState.shareSourceParams = GenerationParameters(
-                                            steps = runState.steps.toInt(),
-                                            cfg = runState.cfg,
-                                            seed = runState.seed.toLongOrNull(),
-                                            prompt = promptField.text,
-                                            negativePrompt = negativePromptField.text,
-                                            generationTime = null,
-                                            width = setupState.currentWidth,
-                                            height = setupState.currentHeight,
-                                            runOnCpu = model?.runOnCpu ?: false,
-                                            denoiseStrength = runState.denoiseStrength,
-                                            useOpenCL = runState.useOpenCL,
-                                            scheduler = runState.scheduler,
-                                            mode = currentMode,
-                                        )
-                                        shareState.shareSourceModelId = modelId
-                                    },
-                                    onReset = { setupState.showResetConfirmDialog = true },
-                                    onDismiss = { setupState.showAdvancedSettings = false },
-                                )
                             }
                         }
 
