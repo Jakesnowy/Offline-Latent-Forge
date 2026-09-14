@@ -36,6 +36,8 @@
     <string name="anima_lowram_hint">仅 Anima 生效：按需加载每个模型，用完即释放。小于 16GB 内存的设备建议开启。开启后将禁用生成过程预览。</string>
     <string name="anima_seq_dit">Anima DiT 轮流加载</string>
     <string name="anima_seq_dit_hint">仅在 Anima 低内存模式下生效：不再让 DiT 的两块同时驻留内存。如果你有 12GB 内存但 Anima 低内存模式仍无法运行，请开启此选项。每步速度会变慢。</string>
+    <string name="dmd2_fine_cfg">DMD2 模型精细 CFG</string>
+    <string name="dmd2_fine_cfg_hint">使用针对 DMD2 模型调整的更精细 CFG 范围（0.5–10，步长 0.1）。仅在选择 dmd2 模型时生效。</string>
     <string name="captured_logs_title">已收集的日志</string>
     <string name="log_saved">已保存到 %1$s</string>
     <string name="log_save_failed">日志保存失败</string>

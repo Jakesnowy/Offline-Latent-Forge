@@ -48,6 +48,17 @@ data class GenerationDefaults(
         const val CFG_RANGE_MIN = 1f
         const val CFG_RANGE_MAX = 30f
         val CFG_RANGE = CFG_RANGE_MIN..CFG_RANGE_MAX
+
+        // DMD2 (distilled) checkpoints are tuned for low guidance. With the
+        // "finer CFG for dmd2 models" toggle on (app_prefs dmd2_fine_cfg,
+        // default enabled) and a DMD2 model active, the CFG slider uses this
+        // narrowed 0.1-increment range instead of CFG_RANGE. 0.5 is within
+        // the engine's accepted 0-30 band (RequestParser.hpp).
+        const val DMD2_CFG_RANGE_MIN = 0.5f
+        const val DMD2_CFG_RANGE_MAX = 10f
+        val DMD2_CFG_RANGE = DMD2_CFG_RANGE_MIN..DMD2_CFG_RANGE_MAX
+        // Slider's discrete intermediate points: (MAX-MIN)/0.1 - 1.
+        const val DMD2_CFG_SLIDER_STEPS = 94
         const val DENOISE_RANGE_MIN = 0f
         const val DENOISE_RANGE_MAX = 1f
         val DENOISE_RANGE = DENOISE_RANGE_MIN..DENOISE_RANGE_MAX

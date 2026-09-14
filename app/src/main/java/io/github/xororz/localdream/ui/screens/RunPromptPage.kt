@@ -133,6 +133,9 @@ internal fun RunPromptPage(
                 cfg = runState.cfg,
                 useOpenCL = runState.useOpenCL,
                 batchCounts = runState.batchCounts,
+                fineCfg = model?.name?.contains("dmd2", ignoreCase = true) == true &&
+                    context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+                        .getBoolean("dmd2_fine_cfg", true),
                 denoiseStrength = runState.denoiseStrength,
                 denoiseApplicable = img2ImgState.isInpaintMode ||
                     runState.selectedImageUri != null,

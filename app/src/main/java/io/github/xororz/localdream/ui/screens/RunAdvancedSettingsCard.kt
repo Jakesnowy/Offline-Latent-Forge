@@ -95,6 +95,7 @@ internal fun RunAdvancedSettingsCard(
     cfg: Float,
     useOpenCL: Boolean,
     batchCounts: Int,
+    fineCfg: Boolean,
     denoiseStrength: Float,
     denoiseApplicable: Boolean,
     seed: String,
@@ -406,11 +407,22 @@ internal fun RunAdvancedSettingsCard(
                             "CFG Scale: %.1f".format(cfg),
                             style = MaterialTheme.typography.bodyMedium,
                         )
+                        // DMD2 checkpoints get a narrowed 0.1-increment range
+                        // when the "finer CFG" setting is on; everything else
+                        // uses the standard full range.
                         Slider(
                             value = cfg,
                             onValueChange = onCfgChange,
-                            valueRange = GenerationDefaults.CFG_RANGE,
-                            steps = 57,
+                            valueRange = if (fineCfg) {
+                                GenerationDefaults.DMD2_CFG_RANGE
+                            } else {
+                                GenerationDefaults.CFG_RANGE
+                            },
+                            steps = if (fineCfg) {
+                                GenerationDefaults.DMD2_CFG_SLIDER_STEPS
+                            } else {
+                                57
+                            },
                             modifier = Modifier.fillMaxWidth(),
                         )
                     }

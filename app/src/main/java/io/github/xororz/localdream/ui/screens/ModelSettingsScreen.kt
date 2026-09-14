@@ -435,6 +435,17 @@ internal fun ModelSettingsScreen(
                                 },
                             )
                         }
+                        var dmd2FineCfg by remember {
+                            mutableStateOf(
+                                preferences.getBoolean("dmd2_fine_cfg", true).also {
+                                    if (!preferences.contains("dmd2_fine_cfg")) {
+                                        preferences.edit {
+                                            putBoolean("dmd2_fine_cfg", true)
+                                        }
+                                    }
+                                },
+                            )
+                        }
                         var animaSeqDit by remember {
                             mutableStateOf(
                                 preferences.getBoolean("anima_seq_dit", false),
@@ -696,6 +707,18 @@ internal fun ModelSettingsScreen(
                                 )
                             }
                         }
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                        )
+                        SwitchSettingRow(
+                            title = stringResource(R.string.dmd2_fine_cfg),
+                            description = stringResource(R.string.dmd2_fine_cfg_hint),
+                            checked = dmd2FineCfg,
+                            onCheckedChange = {
+                                dmd2FineCfg = it
+                                preferences.edit { putBoolean("dmd2_fine_cfg", it) }
+                            },
+                        )
                         HorizontalDivider(
                             modifier = Modifier.padding(horizontal = 16.dp),
                         )
