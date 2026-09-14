@@ -1,39 +1,98 @@
 <div align="center">
 
-# Local Dream <img src="./assets/icon.png" width="32" alt="Local Dream">
+# Offline Latent Forge <img src="./assets/icon.png" width="32" alt="Offline Latent Forge">
 
-**Android Stable Diffusion with Snapdragon NPU acceleration**  
-_Also supports CPU/GPU inference_
+**Android Stable Diffusion with Snapdragon NPU acceleration**
+_Local inference, no cloud, no accounts. CPU/GPU inference also supported._
 
 <img src="./assets/demo1.jpg" alt="App Demo" width="800">
 
 </div>
 
-## About this Repo
+## About This Fork
 
-This project is **now open sourced and completely free**. Hope you enjoy it!
+**Offline Latent Forge** is a community fork of
+[Local Dream](https://github.com/xororz/local-dream) by
+[xororz](https://github.com/xororz). All of upstream's capabilities are here —
+plus the fork's own additions, kept in sync with upstream where practical:
 
-If you like it, please consider [sponsor](#-support-this-project) this project.
+- **Refined generation controls** — collapsible advanced-settings card,
+  batch/seed interplay (batch is locked to 1 while a seed is set, with an
+  explanatory dialog), live UltraFix denoise-strength feedback, finer CFG
+  support for DMD2 checkpoints.
+- **First-class "upscale" mode** — upscaled copies are recorded and filterable
+  as their own mode in history instead of inheriting the source mode.
+- **Download integrity** — SHA-256 verification using Hugging Face's
+  `X-Linked-ETag`/`X-Linked-Size` metadata, with TOFU pinning for non-HF
+  sources.
+- **Privacy by default** — prompts, images, and the history database are
+  excluded from cloud backup and device transfer.
+- **Windows build support** — a first-class `build.bat` native-engine build
+  route (NDK r28+), alongside upstream's Linux flow.
+- **Install-friendly builds** — repo-committed debug keystore so CI builds
+  upgrade in place, a `.debug` build that coexists with the official app, and
+  manually-dispatched beta/debug releases.
 
-> [!NOTE]
-> Currently focused on SD1.5 and SDXL models. SD2.1 is no longer maintained due to poor quality and limited popularity.
->
-> **NPU support:**
->
-> - SD1.5 models are supported on Snapdragon NPUs with Hexagon V68 architecture or newer.
-> - SDXL models are supported on Snapdragon 8 Gen 3 and newer devices.
->
-> If your chip is outside the above scope, you can only run SD1.5 on CPU/GPU.
->
-> You can join our [telegram group](https://t.me/local_dream) for discussion or help with testing.
+> [!IMPORTANT]
+> This fork uses a **different applicationId**
+> (`io.github.jakesnowy.offlinelatentforge`) than upstream. Switching between
+> the two is a fresh install: app-private data (downloaded models, history)
+> does not carry over. Use the History screen's export/import to move prompts
+> and images.
+
+## Supported Models
+
+- **SD1.5** models on Snapdragon NPUs (Hexagon V68+) and CPU/GPU.
+- **SDXL** models on Snapdragon 8 Gen 3 and newer (NPU), plus CPU/GPU.
+- SD2.1 is not maintained (upstream decision, kept here).
+
+Remote generation is also supported: one device can host its models for other
+devices on the same network (host mode / LAN access).
+
+## Install
+
+Grab the latest APK from the
+[Releases](https://github.com/Jakesnowy/reverie/releases) page:
+
+- `basic` — standard build.
+- `filter` — adds the NSFW checker (enforces the threshold).
+- `beta` — the primary distribution line, signed with a stable key so betas
+  upgrade in place.
+
+NPU acceleration requires the Qualcomm QNN runtime; the app downloads or
+bundles what it needs per device.
+
+## Building From Source
+
+Requirements: Android Studio (or command-line SDK), NDK **r28** recommended,
+JDK 17+ for Gradle, and the Qualcomm [QNN
+SDK](https://www.qualcomm.com/developer/software/qualcomm-ai-engine-direct-sdk)
+for the native engine.
+
+- **Windows:** `app/src/main/cpp/build.bat` builds the native engine, then
+  `gradlew assembleBasicDebug` (or `assembleFilterDebug`).
+- **Linux/macOS:** upstream's CMake flow applies; see upstream's docs.
+- **CI:** every push runs lint/detekt; releases are cut manually via workflow
+  dispatch (beta or per-commit debug builds).
+
+Set `CI=1` in your environment before a local `gradlew` build to sign debug
+APKs with the repo keystore (identical to CI builds, so they upgrade in
+place).
 
 ## User Guide
 
-For certain reasons, all guides and documentation have been moved to [Guide Site](https://ld-guide.chino.icu).
+Upstream's guide site applies to this fork as well:
+[Guide Site](https://ld-guide.chino.icu).
 
 ## Credits & Acknowledgments
 
-Local Dream is built on top of many excellent open-source projects. Sincere thanks to all the authors and contributors whose work made this project possible.
+This fork exists thanks to **[xororz](https://github.com/xororz)** and the
+original **Local Dream** project — all core engineering (the NPU engine, model
+pipeline, and app architecture) is their work. Please support upstream.
+
+Offline Latent Forge is built on top of many excellent open-source projects.
+Sincere thanks to all the authors and contributors whose work made this
+project possible.
 
 ### C++ Libraries
 
@@ -62,15 +121,10 @@ Local Dream is built on top of many excellent open-source projects. Sincere than
 
 ---
 
-## 💖 Support This Project
+## 💖 Support Upstream
 
-If you find Local Dream useful, please consider supporting its development:
-
-### What Your Support Helps With:
-
-- **Additional Models** - More AI model integrations
-- **New Features** - Enhanced functionality and capabilities
-- **Bug Fixes** - Continuous improvement and maintenance
+If you find this fork useful, the engineering behind it belongs to upstream
+**Local Dream** — please consider supporting xororz directly:
 
 <a href="https://ko-fi.com/xororz">
     <img height="36" style="border:0px;height:36px;" src="https://storage.ko-fi.com/cdn/kofi2.png?v=3" border="0" alt="Buy Me a Coffee at ko-fi.com" />
@@ -79,4 +133,3 @@ If you find Local Dream useful, please consider supporting its development:
     <img height="36" style="border-radius:12px;height:36px;" src="https://pic1.afdiancdn.com/static/img/welcome/button-sponsorme.jpg" alt="在爱发电支持我" />
 </a>
 
-Your sponsorship helps maintain and improve Local Dream for everyone!
