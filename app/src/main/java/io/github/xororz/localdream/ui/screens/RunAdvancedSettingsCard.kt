@@ -193,6 +193,53 @@ internal fun RunAdvancedSettingsCard(
                 }
             }
 
+            // Steps and CFG are the least advanced of the advanced settings,
+            // so they stay on the card face (visible while collapsed) for
+            // quick adjustment; the rest lives behind the expander.
+            Column(
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column {
+                    Text(
+                        stringResource(R.string.steps, steps.roundToInt()),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Slider(
+                        value = steps,
+                        onValueChange = onStepsChange,
+                        valueRange = GenerationDefaults.STEPS_RANGE,
+                        steps = 48,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+
+                Column {
+                    Text(
+                        "CFG Scale: %.1f".format(cfg),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    // DMD2 checkpoints get a narrowed 0.1-increment range
+                    // when the "finer CFG" setting is on; everything else
+                    // uses the standard full range.
+                    Slider(
+                        value = cfg,
+                        onValueChange = onCfgChange,
+                        valueRange = if (fineCfg) {
+                            GenerationDefaults.DMD2_CFG_RANGE
+                        } else {
+                            GenerationDefaults.CFG_RANGE
+                        },
+                        steps = if (fineCfg) {
+                            GenerationDefaults.DMD2_CFG_SLIDER_STEPS
+                        } else {
+                            57
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+
             AnimatedVisibility(
                 visible = expanded,
                 enter = fadeIn() + expandVertically(),
@@ -388,44 +435,6 @@ internal fun RunAdvancedSettingsCard(
                         }
                     }
 
-                    Column {
-                        Text(
-                            stringResource(R.string.steps, steps.roundToInt()),
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                        Slider(
-                            value = steps,
-                            onValueChange = onStepsChange,
-                            valueRange = GenerationDefaults.STEPS_RANGE,
-                            steps = 48,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
-
-                    Column {
-                        Text(
-                            "CFG Scale: %.1f".format(cfg),
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                        // DMD2 checkpoints get a narrowed 0.1-increment range
-                        // when the "finer CFG" setting is on; everything else
-                        // uses the standard full range.
-                        Slider(
-                            value = cfg,
-                            onValueChange = onCfgChange,
-                            valueRange = if (fineCfg) {
-                                GenerationDefaults.DMD2_CFG_RANGE
-                            } else {
-                                GenerationDefaults.CFG_RANGE
-                            },
-                            steps = if (fineCfg) {
-                                GenerationDefaults.DMD2_CFG_SLIDER_STEPS
-                            } else {
-                                57
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
                     if (runOnCpu) {
                         Column {
                             Text(
