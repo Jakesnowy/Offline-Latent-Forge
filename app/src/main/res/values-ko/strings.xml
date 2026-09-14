@@ -265,6 +265,9 @@
     <string name="add_custom_npu_model">사용자 지정 NPU 모델 추가</string>
     <string name="custom_model">사용자 지정 모델</string>
     <string name="custom_model_name">모델 이름</string>
+    <string name="custom_npu_model_url_label">Hugging Face 링크(선택 사항)</string>
+    <string name="custom_npu_model_url_invalid">유효한 https:// Hugging Face 링크를 입력하세요</string>
+    <string name="npu_downloading">모델 다운로드 중…</string>
     <string name="custom_model_name_hint">모델 이름 입력</string>
     <string name="custom_model_id_reserved">이 이름은 내장 모델과 충돌합니다. 다른 이름을 선택하세요.</string>
     <string name="pin_to_top">상단 고정</string>

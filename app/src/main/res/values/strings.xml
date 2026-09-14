@@ -277,6 +277,9 @@
     <string name="add_custom_npu_model">Add Custom NPU Model</string>
     <string name="custom_model">Custom Model</string>
     <string name="custom_model_name">Model Name</string>
+    <string name="custom_npu_model_url_label">Hugging Face link (optional)</string>
+    <string name="custom_npu_model_url_invalid">Enter a valid https:// Hugging Face link</string>
+    <string name="npu_downloading">Downloading model…</string>
     <string name="custom_model_name_hint">Enter model name</string>
     <string name="custom_model_id_reserved">This name conflicts with a built-in model. Please choose a different one.</string>
     <string name="pin_to_top">Pin to top</string>

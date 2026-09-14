@@ -97,6 +97,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
 
 data class LoRAFile(val uri: Uri, val weight: Float = 1.0f)
 
@@ -678,6 +680,45 @@ fun ModelListScreen(navController: NavController, modifier: Modifier = Modifier)
                         context = context,
                         modelName = modelName,
                         zipUri = zipUri,
+                        onProgress = { progress ->
+                            dialogsState.conversionProgress = progress
+                        },
+                        onByteProgress = { extracted, total, fraction ->
+                            dialogsState.extractByteProgress = ExtractByteProgress(extracted, total, fraction)
+                        },
+                        onStart = {
+                            dialogsState.extractByteProgress = null
+                            dialogsState.isConverting = true
+                        },
+                        onSuccess = {
+                            dialogsState.isConverting = false
+                            dialogsState.extractByteProgress = null
+                            scope.launch {
+                                modelRepository.refreshAllModels()
+                                snackbarHostState.showSnackbar(msgNpuModelAddedSuccess)
+                            }
+                        },
+                        onError = { error ->
+                            dialogsState.isConverting = false
+                            dialogsState.extractByteProgress = null
+                            scope.launch {
+                                snackbarHostState.showSnackbar(
+                                    msgNpuModelAddFailed.format(error),
+                                )
+                            }
+                        },
+                    )
+                }
+            },
+            onModelUrlAdded = { modelName, rawUrl ->
+                dialogsState.showCustomNpuModelDialog = false
+                scope.launch {
+                    // Repo "blob" page links don't serve the file directly;
+                    // HF's /resolve/ path does.
+                    installNpuModelFromUrl(
+                        context = context,
+                        modelName = modelName,
+                        url = rawUrl.replace("/blob/", "/resolve/"),
                         onProgress = { progress ->
                             dialogsState.conversionProgress = progress
                         },
@@ -2091,9 +2132,17 @@ private fun AddModelOutlinedCard(label: String, onClick: () -> Unit, accent: Boo
 }
 
 @Composable
-fun CustomNpuModelDialog(context: Context, onDismiss: () -> Unit, onModelAdded: (String, Uri) -> Unit) {
+fun CustomNpuModelDialog(
+    context: Context,
+    onDismiss: () -> Unit,
+    onModelAdded: (String, Uri) -> Unit,
+    onModelUrlAdded: (String, String) -> Unit,
+) {
     var modelName by remember { mutableStateOf("") }
     var selectedZipUri by remember { mutableStateOf<Uri?>(null) }
+    var modelUrl by remember { mutableStateOf("") }
+    val trimmedUrl = modelUrl.trim()
+    val isUrlUsable = trimmedUrl.startsWith("https://")
     val isIdReserved = modelName.isNotBlank() &&
         ModelRepository.isReservedModelId(modelName.replace(" ", ""))
 
@@ -2188,16 +2237,35 @@ fun CustomNpuModelDialog(context: Context, onDismiss: () -> Unit, onModelAdded: 
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+
+                OutlinedTextField(
+                    value = modelUrl,
+                    onValueChange = { modelUrl = it },
+                    label = { Text(stringResource(R.string.custom_npu_model_url_label)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    isError = trimmedUrl.isNotEmpty() && !isUrlUsable,
+                    supportingText = if (trimmedUrl.isNotEmpty() && !isUrlUsable) {
+                        { Text(stringResource(R.string.custom_npu_model_url_invalid)) }
+                    } else {
+                        null
+                    },
+                )
             }
         },
         confirmButton = {
             TextButton(
                 onClick = {
-                    if (modelName.isNotBlank() && selectedZipUri != null && !isIdReserved) {
-                        onModelAdded(modelName, selectedZipUri!!)
+                    if (modelName.isNotBlank() && !isIdReserved) {
+                        if (selectedZipUri != null) {
+                            onModelAdded(modelName, selectedZipUri!!)
+                        } else if (trimmedUrl.isNotEmpty() && isUrlUsable) {
+                            onModelUrlAdded(modelName, trimmedUrl)
+                        }
                     }
                 },
-                enabled = modelName.isNotBlank() && selectedZipUri != null && !isIdReserved,
+                enabled = modelName.isNotBlank() && !isIdReserved &&
+                    (selectedZipUri != null || (trimmedUrl.isNotEmpty() && isUrlUsable)),
             ) {
                 Text(stringResource(R.string.add_model))
             }
@@ -2602,6 +2670,116 @@ suspend fun extractNpuModel(
         withContext(Dispatchers.Main) {
             onError(e.message ?: context.getString(R.string.unknown_error))
         }
+    }
+}
+
+/**
+ * Downloads a custom NPU model from a direct HTTPS link (typically a Hugging
+ * Face /resolve/ URL — /blob/ page links are converted by the caller) and
+ * installs it. A .zip payload goes through [extractNpuModel]; any other
+ * single-file payload is placed in the model directory as-is alongside the
+ * `npucustom` marker. The cache file is always cleaned up.
+ */
+suspend fun installNpuModelFromUrl(
+    context: Context,
+    modelName: String,
+    url: String,
+    onProgress: (String) -> Unit,
+    onByteProgress: (extractedBytes: Long, totalCompressedBytes: Long, fraction: Float) -> Unit,
+    onStart: () -> Unit,
+    onSuccess: () -> Unit,
+    onError: (String) -> Unit,
+) = withContext(Dispatchers.IO) {
+    val modelId = modelName.replace(" ", "")
+    val cacheFile = File(
+        context.cacheDir,
+        "npu_dl_${modelId}_${System.currentTimeMillis()}",
+    )
+    try {
+        withContext(Dispatchers.Main) {
+            onStart()
+            onProgress(context.getString(R.string.npu_downloading))
+        }
+
+        val client = OkHttpClient()
+        val response = client.newCall(Request.Builder().url(url).build()).execute()
+        response.use { resp ->
+            if (!resp.isSuccessful) {
+                throw Exception("HTTP ${resp.code}")
+            }
+            val body = resp.body ?: throw Exception("Empty response body")
+            val totalBytes = body.contentLength()
+
+            val headerName = resp.header("Content-Disposition")
+                ?.substringAfterLast("filename=")
+                ?.trim(' ', '"', '\'')
+                ?.takeIf { it.isNotBlank() }
+            val urlName = url.substringBefore('?').substringAfterLast('/').takeIf { it.isNotBlank() }
+            val fileName = headerName ?: urlName ?: "model.bin"
+
+            withContext(Dispatchers.Main) {
+                onByteProgress(0L, totalBytes, 0f)
+            }
+
+            body.byteStream().use { input ->
+                BufferedOutputStream(cacheFile.outputStream()).use { output ->
+                    val buffer = ByteArray(64 * 1024)
+                    var bytesRead: Int
+                    var written = 0L
+                    while (input.read(buffer).also { bytesRead = it } != -1) {
+                        output.write(buffer, 0, bytesRead)
+                        written += bytesRead
+                        val fraction = if (totalBytes > 0) {
+                            (written.toFloat() / totalBytes).coerceIn(0f, 1f)
+                        } else {
+                            0f
+                        }
+                        onByteProgress(written, totalBytes, fraction)
+                    }
+                }
+            }
+
+            val isZip = fileName.endsWith(".zip", ignoreCase = true) ||
+                resp.header("Content-Type")?.contains("zip", ignoreCase = true) == true
+
+            if (isZip) {
+                // Delegate to the zip flow: it owns success/error reporting
+                // and cleans up the model directory on failure.
+                extractNpuModel(
+                    context = context,
+                    modelName = modelName,
+                    zipUri = Uri.fromFile(cacheFile),
+                    onProgress = onProgress,
+                    onByteProgress = onByteProgress,
+                    onStart = onStart,
+                    onSuccess = onSuccess,
+                    onError = onError,
+                )
+            } else {
+                // Single-file payload: install it as the model directory's
+                // content with the npucustom marker.
+                val modelsDir = File(context.filesDir, "models")
+                modelsDir.mkdirs()
+                val modelDir = File(modelsDir, modelId)
+                if (modelDir.exists()) {
+                    modelDir.deleteRecursively()
+                }
+                modelDir.mkdirs()
+                cacheFile.copyTo(File(modelDir, fileName), overwrite = true)
+                File(modelDir, "npucustom").createNewFile()
+                withContext(Dispatchers.Main) {
+                    onSuccess()
+                }
+            }
+        }
+    } catch (e: Exception) {
+        Log.e("NpuModelDownload", "Download/install failed", e)
+        File(File(context.filesDir, "models"), modelId).deleteRecursively()
+        withContext(Dispatchers.Main) {
+            onError(e.message ?: context.getString(R.string.unknown_error))
+        }
+    } finally {
+        cacheFile.delete()
     }
 }
 

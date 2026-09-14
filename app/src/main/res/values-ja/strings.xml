@@ -265,6 +265,9 @@
     <string name="add_custom_npu_model">カスタムNPUモデルを追加</string>
     <string name="custom_model">カスタムモデル</string>
     <string name="custom_model_name">モデル名</string>
+    <string name="custom_npu_model_url_label">Hugging Face リンク（任意）</string>
+    <string name="custom_npu_model_url_invalid">有効な https:// の Hugging Face リンクを入力してください</string>
+    <string name="npu_downloading">モデルをダウンロード中…</string>
     <string name="custom_model_name_hint">モデル名を入力</string>
     <string name="custom_model_id_reserved">この名前は組み込みモデルと競合します。別の名前を使用してください。</string>
     <string name="pin_to_top">トップに固定</string>

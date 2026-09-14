@@ -265,6 +265,9 @@
     <string name="add_custom_npu_model">添加自定义NPU模型</string>
     <string name="custom_model">自定义模型</string>
     <string name="custom_model_name">模型名称</string>
+    <string name="custom_npu_model_url_label">Hugging Face 链接（可选）</string>
+    <string name="custom_npu_model_url_invalid">请输入有效的 https:// Hugging Face 链接</string>
+    <string name="npu_downloading">正在下载模型…</string>
     <string name="custom_model_name_hint">输入模型名称</string>
     <string name="custom_model_id_reserved">该名称与内置模型冲突，请使用其他名称</string>
     <string name="pin_to_top">置顶</string>
