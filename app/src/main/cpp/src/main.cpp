@@ -6,7 +6,11 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
+
+#include <sys/types.h>
+#include <unistd.h>
 
 #include "Config.hpp"
 #include "MnnUtils.hpp"
@@ -416,7 +420,27 @@ static std::string encodeResultImage(const GenerationResult &result,
 // Serializes generations: the pipelines share MNN sessions and the global IO
 // dimensions, so two requests must never run generate() concurrently (e.g. a
 // new request arriving while an aborted one is still winding down).
-static std::mutex g_generation_mutex;
+static std::timed_mutex g_generation_mutex;
+
+// The engine runs as a child of the app process. If the app dies without a
+// graceful BackendService stop (swipe-away, LMK eviction, crash), the child is
+// orphaned with every QNN allocation still resident — RAM stays high until it
+// is killed. Watch the parent PID and exit the moment we are reparented.
+static pid_t g_parent_pid = 0;
+
+static void parent_watchdog_thread() {
+  while (true) {
+    sleep(2);
+    if (g_parent_pid != 0 && getppid() != g_parent_pid) {
+      std::cout << "Orphan watchdog: parent process died, exiting."
+                << std::endl;
+      // _exit skips static destructors on purpose: the kernel reclaims every
+      // allocation instantly, and QNN teardown on a dead session can stall.
+      _exit(0);
+    }
+  }
+}
+
 
 // Populated from the command line in main(). g_models_root restricts
 // /upscale's X-Upscaler-Path to weights under the app's models directory;
@@ -516,11 +540,30 @@ static void registerGenerateEndpoint(httplib::Server &svr, Pipeline *pipeline,
       res.set_header("Content-Type", "text/event-stream");
       res.set_header("Cache-Control", "no-cache");
       res.set_header("Connection", "keep-alive");
+      // Hold the generation mutex across the whole streamed run, acquired
+      // here in the handler (before the response starts) so a busy or wedged
+      // engine is reported as 503 instead of an invisible infinite queue.
+      auto generation_lock =
+          std::make_shared<std::unique_lock<std::timed_mutex>>(
+              g_generation_mutex, std::defer_lock);
+      if (!generation_lock->try_lock_for(std::chrono::seconds(2))) {
+        nlohmann::json err = {
+            {"error",
+             {{"message",
+               "Engine busy: another generation is in progress or wedged"},
+              {"type", "server_error"}}}};
+        res.status = 503;
+        res.set_content(err.dump(), "application/json");
+        return;
+      }
       res.set_chunked_content_provider(
           "text/event-stream",
-          [pipeline, req](intptr_t, httplib::DataSink &sink) -> bool {
+          [pipeline, req, generation_lock](intptr_t,
+                                           httplib::DataSink &sink) -> bool {
             try {
-              std::lock_guard<std::mutex> generation_lock(g_generation_mutex);
+              // generation_lock keeps the mutex held until the provider is
+              // destroyed (end of streaming).
+
               auto result = pipeline->generate(
                   *req, [&sink, &req](int s, int t, const std::string &img) {
                     nlohmann::json p = {
@@ -911,6 +954,10 @@ int main(int argc, char **argv) {
 
   // --- HTTP Server ---
   httplib::Server svr;
+  // Bound request bodies: img2img base64 payloads are the largest legitimate
+  // bodies (a few MB). Without a limit cpp-httplib accepts unbounded bodies,
+  // which on host mode (0.0.0.0) lets any LAN client OOM the engine.
+  svr.set_payload_max_length(256 * 1024 * 1024);
   // No CORS headers on purpose: the only client is the app's OkHttp traffic,
   // which is not subject to CORS. Wildcard CORS on an open port would let any
   // web page a user browses read responses from these ports.
@@ -926,6 +973,10 @@ int main(int argc, char **argv) {
     registerGenerateEndpoint(svr, pipeline.get(), text_encoder.get());
   registerUpscaleEndpoint(svr);
   if (text_encoder) registerTokenizeEndpoint(svr, text_encoder.get());
+
+  // Start the orphan watchdog once the server is about to accept traffic.
+  g_parent_pid = getppid();
+  std::thread(parent_watchdog_thread).detach();
 
   std::cout << "Server listening on " << opts.listen_address << ":" << opts.port
             << std::endl;

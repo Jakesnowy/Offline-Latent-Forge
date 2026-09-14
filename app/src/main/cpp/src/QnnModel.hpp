@@ -248,6 +248,11 @@ class QnnModel : public QnnSampleApp {
       uint16_t *latents_uint16 =
           static_cast<uint16_t *>(QNN_TENSOR_GET_CLIENT_BUF(inputs[0]).data);
       int elementCount = 1 * 4 * sample_width * sample_height;
+      if (tensorElems(inputs[0]) < (size_t)elementCount) {
+        QNN_ERROR("unet: latents tensor too small");
+        returnStatus = StatusCode::FAILURE;
+        return returnStatus;
+      }
       qnn::tools::datautil::floatToTfN(
           latents_uint16, latents,
           inputs[0].v1.quantizeParams.scaleOffsetEncoding.offset,
@@ -266,6 +271,11 @@ class QnnModel : public QnnSampleApp {
       uint16_t *text_embedding_uint16 =
           static_cast<uint16_t *>(QNN_TENSOR_GET_CLIENT_BUF(inputs[2]).data);
       int elementCount = 1 * 77 * text_embedding_size;
+      if (tensorElems(inputs[2]) < (size_t)elementCount) {
+        QNN_ERROR("unet: text_embedding tensor too small");
+        returnStatus = StatusCode::FAILURE;
+        return returnStatus;
+      }
       qnn::tools::datautil::floatToTfN(
           text_embedding_uint16, text_embedding,
           inputs[2].v1.quantizeParams.scaleOffsetEncoding.offset,
@@ -326,6 +336,12 @@ class QnnModel : public QnnSampleApp {
 
     if (graphInfo.numInputTensors != 1) {
       QNN_ERROR("Expecting 1 input tensors, got %d", graphInfo.numInputTensors);
+      returnStatus = StatusCode::FAILURE;
+      return returnStatus;
+    }
+    if (graphInfo.numOutputTensors < 2) {
+      QNN_ERROR("Expecting at least 2 output tensors for vae encoder, got %d",
+                graphInfo.numOutputTensors);
       returnStatus = StatusCode::FAILURE;
       return returnStatus;
     }
@@ -407,6 +423,11 @@ class QnnModel : public QnnSampleApp {
       uint16_t *latents_uint16 =
           static_cast<uint16_t *>(QNN_TENSOR_GET_CLIENT_BUF(inputs[0]).data);
       int elementCount = 1 * 4 * sample_width * sample_height;
+      if (tensorElems(inputs[0]) < (size_t)elementCount) {
+        QNN_ERROR("vae decoder: latents tensor too small");
+        returnStatus = StatusCode::FAILURE;
+        return returnStatus;
+      }
       qnn::tools::datautil::floatToTfN(
           latents_uint16, latents,
           inputs[0].v1.quantizeParams.scaleOffsetEncoding.offset,
@@ -475,6 +496,11 @@ class QnnModel : public QnnSampleApp {
     // sample (fp32, 1x4xHxW)
     {
       int elementCount = 1 * 4 * sample_width * sample_height;
+      if (tensorElems(inputs[0]) < (size_t)elementCount) {
+        QNN_ERROR("sdxl unet: sample tensor too small");
+        returnStatus = StatusCode::FAILURE;
+        return returnStatus;
+      }
       memcpy(static_cast<float *>(QNN_TENSOR_GET_CLIENT_BUF(inputs[0]).data),
              sample, elementCount * sizeof(float));
     }
@@ -489,6 +515,11 @@ class QnnModel : public QnnSampleApp {
     // encoder_hidden_states (fp32, 1x77x2048)
     {
       int elementCount = 1 * 77 * (text_embedding_size + text_embedding_size_2);
+      if (tensorElems(inputs[1]) < (size_t)elementCount) {
+        QNN_ERROR("sdxl unet: encoder_hidden_states tensor too small");
+        returnStatus = StatusCode::FAILURE;
+        return returnStatus;
+      }
       memcpy(static_cast<float *>(QNN_TENSOR_GET_CLIENT_BUF(inputs[1]).data),
              encoder_hidden_states, elementCount * sizeof(float));
     }
@@ -496,6 +527,11 @@ class QnnModel : public QnnSampleApp {
     // text_embeds (fp32, 1x1280)
     {
       int elementCount = 1 * text_embedding_size_2;
+      if (tensorElems(inputs[4]) < (size_t)elementCount) {
+        QNN_ERROR("sdxl unet: text_embeds tensor too small");
+        returnStatus = StatusCode::FAILURE;
+        return returnStatus;
+      }
       memcpy(static_cast<float *>(QNN_TENSOR_GET_CLIENT_BUF(inputs[4]).data),
              text_embeds, elementCount * sizeof(float));
     }
@@ -572,6 +608,11 @@ class QnnModel : public QnnSampleApp {
     // pixel_values (fp32, 1x3xHxW)
     {
       int elementCount = 1 * 3 * output_width * output_height;
+      if (tensorElems(inputs[0]) < (size_t)elementCount) {
+        QNN_ERROR("sdxl vae encoder: pixel_values tensor too small");
+        returnStatus = StatusCode::FAILURE;
+        return returnStatus;
+      }
       memcpy(static_cast<float *>(QNN_TENSOR_GET_CLIENT_BUF(inputs[0]).data),
              pixel_values, elementCount * sizeof(float));
     }
@@ -968,16 +1009,14 @@ class QnnModel : public QnnSampleApp {
       return returnStatus;
     }
 
-    // input_image (quantized to uint8, 1x3x192x192)
+    // input_image (1x3x192x192, fp32 0..1, NCHW). Note: the graph's I/O is
+    // declared FLOAT_32 — a raw memcpy is the contract (no floatToTfN).
     {
-      // uint8_t *input_uint8 =
-      //     static_cast<uint8_t *>(QNN_TENSOR_GET_CLIENT_BUF(inputs[0]).data);
-      // int elementCount = 1 * 3 * 192 * 192;
-      // qnn::tools::datautil::floatToTfN(
-      //     input_uint8, input_image,
-      //     inputs[0].v1.quantizeParams.scaleOffsetEncoding.offset,
-      //     inputs[0].v1.quantizeParams.scaleOffsetEncoding.scale,
-      //     elementCount);
+      if (tensorElems(inputs[0]) < (size_t)(1 * 3 * 192 * 192)) {
+        QNN_ERROR("upscaler: input tensor too small");
+        returnStatus = StatusCode::FAILURE;
+        return returnStatus;
+      }
       memcpy(static_cast<float *>(QNN_TENSOR_GET_CLIENT_BUF(inputs[0]).data),
              input_image, 1 * 3 * 192 * 192 * sizeof(float));
     }
@@ -1013,6 +1052,11 @@ class QnnModel : public QnnSampleApp {
     //   memcpy(output_image, tmp, elementCount * sizeof(float));
     //   free(tmp);
     // }
+    if (tensorElems(outputs[0]) < (size_t)(1 * 3 * 768 * 768)) {
+      QNN_ERROR("upscaler: output tensor too small");
+      returnStatus = StatusCode::FAILURE;
+      return returnStatus;
+    }
     memcpy(output_image,
            static_cast<float *>(QNN_TENSOR_GET_CLIENT_BUF(outputs[0]).data),
            1 * 3 * 768 * 768 * sizeof(float));

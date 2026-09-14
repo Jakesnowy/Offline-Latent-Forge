@@ -191,3 +191,54 @@ diff --git a/3rdparty/SampleApp/src/Utils/IOTensor.hpp b/3rdparty/SampleApp/src/
    StatusCode convertAndWriteOutputTensorInFloat(Qnn_Tensor_t *output,
                                                  std::vector<std::string> outputPaths,
                                                  std::string fileName,
+
+diff --git a/3rdparty/SampleApp/src/QnnSampleApp.cpp b/3rdparty/SampleApp/src/QnnSampleApp.cpp
+--- a/3rdparty/SampleApp/src/QnnSampleApp.cpp
++++ b/3rdparty/SampleApp/src/QnnSampleApp.cpp
+@@ -160,34 +160,38 @@
+ sample_app::StatusCode sample_app::QnnSampleApp::terminateBackend() {
++  // Continue-on-error (fork patch, audit H2): a failed free must not strand
++  // the remaining teardown steps - each skipped free leaks its QNN
++  // allocation, which is exactly how RAM stays pinned after a failed init.
++  StatusCode returnStatus = StatusCode::SUCCESS;
+   // Free Profiling object if it was created
+   if (nullptr != m_profileBackendHandle) {
+     if (QNN_PROFILE_NO_ERROR !=
+         m_qnnFunctionPointers.qnnInterface.profileFree(m_profileBackendHandle)) {
+       QNN_ERROR("Could not free backend profile handle.");
+-      return StatusCode::FAILURE;
++      returnStatus = StatusCode::FAILURE;
+     }
+   }
+   m_profileBackendHandle = nullptr;
+   // Free context if not already done
+   if (m_isContextCreated) {
+     if (QNN_CONTEXT_NO_ERROR !=
+         m_qnnFunctionPointers.qnnInterface.contextFree(m_context, nullptr)) {
+       QNN_ERROR("Could not free context");
+-      return StatusCode::FAILURE;
++      returnStatus = StatusCode::FAILURE;
+     }
+   }
+   m_isContextCreated = false;
+   // Terminate backend
+   if (m_isBackendInitialized && nullptr != m_qnnFunctionPointers.qnnInterface.backendFree) {
+     if (QNN_BACKEND_NO_ERROR != m_qnnFunctionPointers.qnnInterface.backendFree(m_backendHandle)) {
+       QNN_ERROR("Could not free backend");
+-      return StatusCode::FAILURE;
++      returnStatus = StatusCode::FAILURE;
+     }
+   }
+   m_isBackendInitialized = false;
+   // Terminate logging in the backend
+   if (nullptr != m_qnnFunctionPointers.qnnInterface.logFree && nullptr != m_logHandle) {
+     if (QNN_SUCCESS != m_qnnFunctionPointers.qnnInterface.logFree(m_logHandle)) {
+       QNN_WARN("Unable to terminate logging in the backend.");
+-      return StatusCode::FAILURE;
++      returnStatus = StatusCode::FAILURE;
+     }
+   }
+   m_logHandle = nullptr;
+-  return StatusCode::SUCCESS;
++  return returnStatus;
+ }
