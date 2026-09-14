@@ -1,5 +1,6 @@
 package io.github.xororz.localdream.ui.screens
 
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -52,6 +53,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
@@ -60,6 +62,7 @@ import androidx.compose.ui.unit.dp
 import io.github.xororz.localdream.R
 import io.github.xororz.localdream.data.GenerationDefaults
 import io.github.xororz.localdream.data.Resolution
+import io.github.xororz.localdream.utils.schedulerDisplayName
 import kotlin.math.roundToInt
 
 /**
@@ -134,6 +137,7 @@ internal fun RunAdvancedSettingsCard(
         ModelRunConfirmDialog(
             title = stringResource(R.string.seed_set_title),
             text = stringResource(R.string.batch_seed_incompatible),
+            subText = stringResource(R.string.batch_seed_hint),
             confirmText = stringResource(R.string.clear_seed),
             dismissText = stringResource(R.string.acknowledge),
             onConfirm = {
@@ -306,6 +310,11 @@ internal fun RunAdvancedSettingsCard(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
+                            val context = LocalContext.current
+                            val msgKarrasUnavailable = stringResource(
+                                R.string.karras_unavailable,
+                                schedulerDisplayName(baseId),
+                            )
                             Text(
                                 stringResource(R.string.scheduler),
                                 style = MaterialTheme.typography.bodyMedium,
@@ -321,13 +330,23 @@ internal fun RunAdvancedSettingsCard(
                             CompositionLocalProvider(
                                 LocalMinimumInteractiveComponentSize provides Dp.Unspecified,
                             ) {
+                                // Always pressable: enabling Karras under an
+                                // incompatible scheduler explains itself via a
+                                // toast instead of being a silent no-op.
                                 Switch(
                                     checked = karras && karrasSupported,
-                                    enabled = karrasSupported,
                                     onCheckedChange = { enable ->
-                                        onSchedulerChange(
-                                            if (enable) "${baseId}_karras" else baseId,
-                                        )
+                                        if (enable && !karrasSupported) {
+                                            Toast.makeText(
+                                                context,
+                                                msgKarrasUnavailable,
+                                                Toast.LENGTH_SHORT,
+                                            ).show()
+                                        } else {
+                                            onSchedulerChange(
+                                                if (enable) "${baseId}_karras" else baseId,
+                                            )
+                                        }
                                     },
                                     modifier = Modifier.scale(0.8f),
                                 )

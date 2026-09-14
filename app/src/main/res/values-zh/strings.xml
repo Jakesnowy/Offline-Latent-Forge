@@ -181,7 +181,9 @@
     <string name="random_seed">随机种子 (可选)</string>
     <string name="use_last_seed">使用上次的种子 (%s)</string>
     <string name="batch_count">批次数量: %d</string>
-<string name="batch_seed_incompatible">指定种子时无法进行批量生成。清除种子后即可启用批量生成。</string>
+<string name="batch_seed_incompatible">指定种子时无法进行批量生成。</string>
+<string name="batch_seed_hint">清除种子后即可启用批量生成。</string>
+<string name="karras_unavailable">Karras 不适用于 %s</string>
 <string name="clear_seed">清除种子</string>
 <string name="acknowledge">知道了</string>
     <string name="reproduce">复制</string>

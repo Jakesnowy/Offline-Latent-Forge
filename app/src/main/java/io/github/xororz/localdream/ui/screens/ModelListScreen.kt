@@ -1,5 +1,6 @@
 package io.github.xororz.localdream.ui.screens
 
+import android.app.ActivityManager
 import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
@@ -328,10 +329,28 @@ fun ModelListScreen(navController: NavController, modifier: Modifier = Modifier)
     LaunchedEffect(Unit) {
         if (isFirstLaunch) {
             dialogsState.showHelpDialog = true
+            // First-run default for the low-ram toggles: enable them only
+            // when the device RAM is identifiable and below 16 GB. When RAM
+            // can't be read, don't touch the keys — the materialize-on-first-
+            // read default in ModelSettingsScreen (enabled) stands. Seeding
+            // the keys here also stops the settings screen from later writing
+            // its unconditional default over this choice.
+            val activityManager =
+                context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+            val memoryInfo = activityManager?.let {
+                ActivityManager.MemoryInfo().also(it::getMemoryInfo)
+            }
+            val prefs = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+            if (memoryInfo != null) {
+                val lowRamDevice = memoryInfo.totalMem < 16L * 1024 * 1024 * 1024
+                prefs.edit {
+                    putBoolean("sdxl_lowram", lowRamDevice)
+                    putBoolean("anima_lowram", lowRamDevice)
+                }
+            }
             // Written here instead of inside remember: composition may be
             // discarded, effects only run once it is committed.
-            context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
-                .edit { putBoolean("is_first_launch", false) }
+            prefs.edit { putBoolean("is_first_launch", false) }
         }
         scope.launch {
             sourceState.currentBaseUrl = generationPreferences.getBaseUrl()
