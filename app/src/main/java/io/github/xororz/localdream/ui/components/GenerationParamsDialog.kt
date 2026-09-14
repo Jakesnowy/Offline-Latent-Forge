@@ -27,6 +27,7 @@ import io.github.xororz.localdream.R
 import io.github.xororz.localdream.data.GenerationMode
 import io.github.xororz.localdream.ui.screens.GenerationParameters
 import io.github.xororz.localdream.utils.schedulerDisplayName
+import kotlin.math.roundToInt
 
 @Composable
 fun GenerationParamsDialog(
@@ -116,11 +117,32 @@ fun GenerationParamsDialog(
                             stringResource(R.string.basic_mode, mode.name.lowercase()),
                             style = MaterialTheme.typography.bodyMedium,
                         )
-                        if (mode != GenerationMode.TXT2IMG) {
+                        // Denoise applies to img2img/inpaint and (derived from
+                        // a step count) UltraFix; txt2img and upscale runs
+                        // don't denoise.
+                        if (mode == GenerationMode.IMG2IMG ||
+                            mode == GenerationMode.INPAINT ||
+                            mode == GenerationMode.ULTRAFIX
+                        ) {
                             Text(
                                 stringResource(R.string.basic_denoise, params.denoiseStrength),
                                 style = MaterialTheme.typography.bodyMedium,
                             )
+                            if (mode == GenerationMode.ULTRAFIX) {
+                                // UltraFix strength is recorded from a
+                                // denoise-step count (strength = (steps - 0.5) /
+                                // total); show the steps it came from so the
+                                // settings and details windows share units.
+                                Text(
+                                    stringResource(
+                                        R.string.basic_denoise_steps,
+                                        (params.denoiseStrength * params.steps - 0.5f)
+                                            .roundToInt()
+                                            .coerceIn(0, params.steps),
+                                    ),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                            }
                         }
                     }
                     Text(

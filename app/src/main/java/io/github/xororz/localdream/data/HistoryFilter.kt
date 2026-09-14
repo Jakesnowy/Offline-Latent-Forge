@@ -9,6 +9,7 @@ enum class GenerationMode {
     IMG2IMG,
     INPAINT,
     ULTRAFIX,
+    UPSCALE,
     UNKNOWN,
     ;
 
@@ -18,6 +19,7 @@ enum class GenerationMode {
             "IMG2IMG" -> IMG2IMG
             "INPAINT" -> INPAINT
             "ULTRAFIX" -> ULTRAFIX
+            "UPSCALE" -> UPSCALE
             else -> UNKNOWN
         }
     }

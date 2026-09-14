@@ -210,6 +210,7 @@
     <string name="basic_runtime">Runtime: %s</string>
     <string name="basic_mode">Mode: %s</string>
     <string name="basic_denoise">Denoise strength: %.2f</string>
+<string name="basic_denoise_steps">Denoise steps: %d</string>
     <string name="basic_time">Time: %s</string>
     <string name="opencl_warning">GPU runtime warning: The first run at each resolution will be slow as it generates cache files. Subsequent runs will be much faster.</string>
 

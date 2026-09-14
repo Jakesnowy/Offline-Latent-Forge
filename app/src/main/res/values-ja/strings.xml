@@ -200,6 +200,7 @@
     <string name="basic_runtime">ランタイム: %s</string>
     <string name="basic_mode">モード: %s</string>
     <string name="basic_denoise">ノイズ除去強度: %.2f</string>
+<string name="basic_denoise_steps">除去ステップ数: %d</string>
     <string name="basic_time">時間: %s</string>
     <string name="opencl_warning">GPUランタイムに関する警告：各解像度での最初の実行はキャッシュファイルを生成するため、処理速度が遅くなります。その後の実行は大幅に高速化されます。</string>
 

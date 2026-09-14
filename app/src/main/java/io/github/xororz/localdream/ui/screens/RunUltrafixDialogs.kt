@@ -149,6 +149,20 @@ internal fun RunUltrafixDialogs(
                         modifier = Modifier.fillMaxWidth(),
                     )
 
+                    // Parity with the image-details window: the denoise
+                    // strength the engine will receive for this
+                    // steps/denoise-steps combination.
+                    Text(
+                        stringResource(
+                            R.string.basic_denoise,
+                            ultrafixDenoiseStrength(
+                                ultrafixState.ultrafixDenoiseSteps,
+                                ultrafixState.ultrafixSteps.roundToInt(),
+                            ),
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+
                     // Quality-denoise toggle: run UltraFix on neutral quality
                     // tags instead of the prompt-page prompt. On by default.
                     Row(

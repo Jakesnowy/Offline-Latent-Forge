@@ -201,6 +201,7 @@ fun HistoryFilterSheet(
                         GenerationMode.IMG2IMG to "img2img",
                         GenerationMode.INPAINT to "inpaint",
                         GenerationMode.ULTRAFIX to "ultrafix",
+                        GenerationMode.UPSCALE to "upscale",
                     )
                     modeOptions.forEach { (mode, label) ->
                         val selected = draft.modes?.contains(mode) == true

@@ -2041,17 +2041,20 @@ fun ModelRunScreen(
                                 val updatedParams = params.copy(
                                     width = upscaledBitmap.width,
                                     height = upscaledBitmap.height,
+                                    // Keep the in-memory params consistent with
+                                    // the DB row so the details dialog shows
+                                    // "upscale" for the fresh copy too.
+                                    mode = GenerationMode.UPSCALE,
                                 )
-                                // The displayed image's params carry its
-                                // generation mode (set on completion and
-                                // by every history-load path), so the
-                                // upscaled copy inherits the right one.
-                                val sourceMode = params.mode
+                                // An upscaled copy is its own operation, not a
+                                // repeat of the source generation: record it as
+                                // upscale so the details window and history
+                                // filters can identify it.
                                 val saved = historyManager.saveGeneratedImage(
                                     modelId = modelId,
                                     bitmap = upscaledBitmap,
                                     params = updatedParams,
-                                    mode = sourceMode,
+                                    mode = GenerationMode.UPSCALE,
                                     upscalerId = selectedUpscaler.id,
                                 )
                                 if (saved != null) {
