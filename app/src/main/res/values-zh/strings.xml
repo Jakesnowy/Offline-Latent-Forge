@@ -30,6 +30,9 @@
         <item quantity="other">已导入 %1$d 条</item>
     </plurals>
     <string name="tag_import_failed">导入失败</string>
+    <string name="tag_download">下载</string>
+    <string name="tag_downloading">正在下载… %d%%</string>
+    <string name="tag_download_failed">下载失败：%s</string>
     <string name="sdxl_lowram">SDXL 低内存模式</string>
     <string name="sdxl_lowram_hint">仅 SDXL 生效：按需加载每个模型，用完即释放。小于 16GB 内存的设备建议开启。开启后将禁用生成过程预览。</string>
     <string name="anima_lowram">Anima 低内存模式</string>

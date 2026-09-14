@@ -32,6 +32,9 @@
         <item quantity="other">Imported %1$d entries</item>
     </plurals>
     <string name="tag_import_failed">Import failed</string>
+    <string name="tag_download">Download</string>
+    <string name="tag_downloading">Downloading… %d%%</string>
+    <string name="tag_download_failed">Download failed: %s</string>
     <string name="sdxl_lowram">SDXL low RAM mode</string>
     <string name="sdxl_lowram_hint">For SDXL only: load each model on demand and free it after use. Required on devices with less than 16GB RAM. Disables in-progress preview.</string>
     <string name="anima_lowram">Anima low RAM mode</string>

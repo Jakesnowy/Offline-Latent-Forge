@@ -3,8 +3,16 @@
 package io.github.xororz.localdream.ui.screens
 
 import android.content.Context
+import android.net.Uri
 import android.os.Build
+import android.util.Log
 import android.widget.Toast
+import io.github.xororz.localdream.BuildConfig
+import java.io.File
+import java.io.FileOutputStream
+import java.security.MessageDigest
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -94,7 +102,86 @@ import io.github.xororz.localdream.ui.theme.scheme
 import io.github.xororz.localdream.ui.theme.ThemePreset
 import io.github.xororz.localdream.utils.TempCleaner
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
+
+/**
+ * Downloads the danbooru co-occurrence tag dictionary CSV from Hugging Face
+ * with integrity verification: a non-redirect-following HEAD of the /resolve/
+ * URL exposes the authoritative `X-Linked-ETag` (SHA-256) and `X-Linked-Size`
+ * of LFS-backed files (see design_download_integrity.md). The streamed body's
+ * digest and length are checked before the file is handed to the importer.
+ * Non-LFS files simply have no ETag header — the size check still applies
+ * when the header is present.
+ */
+private const val TAG_CSV_URL =
+    "https://huggingface.co/datasets/newtextdoc1111/danbooru-tag-csv/resolve/main/danbooru_tags_cooccurrence.csv"
+
+private suspend fun downloadTagDictionaryCsv(
+    context: Context,
+    onProgress: (Float) -> Unit,
+): File = withContext(Dispatchers.IO) {
+    val client = OkHttpClient()
+
+    // Authoritative hash probe: redirects must NOT be followed so we read the
+    // X-Linked-* headers off HF's own 302 response.
+    val probeClient = client.newBuilder().followRedirects(false).build()
+    val (expectedSha, expectedSize) = probeClient.newCall(
+        Request.Builder().url(TAG_CSV_URL).head().build(),
+    ).execute().use { probe ->
+        if (!probe.isSuccessful && probe.code !in 300..399) {
+            throw Exception("HTTP ${probe.code}")
+        }
+        // LFS-backed files carry the SHA-256 in X-Linked-ETag; non-LFS files
+        // have no such header and fall back to size-only verification.
+        probe.header("X-Linked-ETag")?.trim('"') to probe.header("X-Linked-Size")?.toLongOrNull()
+    }
+
+    val cacheFile = File(context.cacheDir, "tag_csv_download.csv")
+    try {
+        client.newCall(Request.Builder().url(TAG_CSV_URL).build()).execute().use { resp ->
+            if (!resp.isSuccessful) {
+                throw Exception("HTTP ${resp.code}")
+            }
+            val body = resp.body ?: throw Exception("Empty response body")
+            val digest = MessageDigest.getInstance("SHA-256")
+            var written = 0L
+            body.byteStream().use { input ->
+                FileOutputStream(cacheFile).use { output ->
+                    val buffer = ByteArray(64 * 1024)
+                    var read: Int
+                    while (input.read(buffer).also { read = it } != -1) {
+                        digest.update(buffer, 0, read)
+                        output.write(buffer, 0, read)
+                        written += read
+                        if (expectedSize != null && expectedSize > 0) {
+                            onProgress((written.toFloat() / expectedSize).coerceIn(0f, 1f))
+                        }
+                    }
+                }
+            }
+
+            if (expectedSize != null && expectedSize > 0 && written != expectedSize) {
+                throw Exception(
+                    "Integrity check failed: size $written != $expectedSize",
+                )
+            }
+            expectedSha?.let { expected ->
+                val actual = digest.digest().joinToString("") { "%02x".format(it) }
+                if (!actual.equals(expected, ignoreCase = true)) {
+                    throw Exception("Integrity check failed: hash mismatch")
+                }
+            }
+        }
+        cacheFile
+    } catch (e: Exception) {
+        cacheFile.delete()
+        throw e
+    }
+}
+
 /**
  * The full-screen model settings panel of [ModelListScreen]: download source,
  * appearance, feature toggles (incl. tag autocomplete dictionary import) and
@@ -118,6 +205,7 @@ internal fun ModelSettingsScreen(
     val resources = LocalResources.current
     val settingsScrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
     val msgTagImportFailed = stringResource(R.string.tag_import_failed)
+    val msgTagDownloadFailed = stringResource(R.string.tag_download_failed)
     val msgCleanTempNone = stringResource(R.string.clean_temp_none)
 
     Scaffold(
@@ -366,6 +454,44 @@ internal fun ModelSettingsScreen(
                             remember { TagAutocompleteRepository.getInstance(context) }
                         val tagDictState by tagRepository.state.collectAsState()
                         var tagImportInProgress by remember { mutableStateOf(false) }
+                        var tagDownloadStarted by remember { mutableStateOf(false) }
+                        var tagDownloadProgress by remember { mutableStateOf<Float?>(null) }
+                        LaunchedEffect(tagDownloadStarted) {
+                            if (!tagDownloadStarted) return@LaunchedEffect
+                            tagDownloadStarted = false
+                            tagImportInProgress = true
+                            try {
+                                val file = downloadTagDictionaryCsv(context) { fraction ->
+                                    tagDownloadProgress = fraction
+                                }
+                                val result = tagRepository.importMainCsv(
+                                    Uri.fromFile(file),
+                                    file.name,
+                                )
+                                file.delete()
+                                val message = when (result) {
+                                    is ImportResult.Success ->
+                                        resources.getQuantityString(
+                                            R.plurals.tag_import_success,
+                                            result.lineCount,
+                                            result.lineCount,
+                                        )
+
+                                    is ImportResult.Error -> msgTagImportFailed
+                                }
+                                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                            } catch (e: Exception) {
+                                Log.e("TagCsvDownload", "Download failed", e)
+                                Toast.makeText(
+                                    context,
+                                    msgTagDownloadFailed.format(e.message ?: ""),
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                            } finally {
+                                tagImportInProgress = false
+                                tagDownloadProgress = null
+                            }
+                        }
                         val mainCsvPickerLauncher = rememberLauncherForActivityResult(
                             contract = ActivityResultContracts.GetContent(),
                         ) { uri ->
@@ -594,6 +720,19 @@ internal fun ModelSettingsScreen(
                                                 },
                                             )
                                         }
+                                        // Direct download of the co-occurrence
+                                        // dictionary from Hugging Face — offered
+                                        // only in the basic flavor (the filter
+                                        // flavor ships its own dictionary).
+                                        if (BuildConfig.FLAVOR == "basic") {
+                                            OutlinedButton(
+                                                onClick = { tagDownloadStarted = true },
+                                                enabled = !tagImportInProgress,
+                                                modifier = Modifier.weight(1f),
+                                            ) {
+                                                Text(stringResource(R.string.tag_download))
+                                            }
+                                        }
                                         if (tagDictState.mainImported) {
                                             OutlinedButton(
                                                 onClick = { tagRepository.clearMainCsv() },
@@ -602,6 +741,16 @@ internal fun ModelSettingsScreen(
                                                 Text(stringResource(R.string.tag_clear))
                                             }
                                         }
+                                    }
+                                    tagDownloadProgress?.let { fraction ->
+                                        Text(
+                                            text = stringResource(
+                                                R.string.tag_downloading,
+                                                (fraction * 100).roundToInt(),
+                                            ),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
                                     }
                                 }
                                 HorizontalDivider(

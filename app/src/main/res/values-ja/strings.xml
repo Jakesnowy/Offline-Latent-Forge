@@ -30,6 +30,9 @@
         <item quantity="other">%1$d 件をインポートしました</item>
     </plurals>
     <string name="tag_import_failed">インポートに失敗しました</string>
+    <string name="tag_download">ダウンロード</string>
+    <string name="tag_downloading">ダウンロード中… %d%%</string>
+    <string name="tag_download_failed">ダウンロードに失敗しました: %s</string>
     <string name="sdxl_lowram">SDXL 低メモリモード</string>
     <string name="sdxl_lowram_hint">SDXL 専用：各モデルを必要時にのみ読み込み、使用後に解放します。16GB 未満のデバイスでは有効化してください。生成途中のプレビューは無効になります。</string>
     <string name="anima_lowram">Anima 低メモリモード</string>
