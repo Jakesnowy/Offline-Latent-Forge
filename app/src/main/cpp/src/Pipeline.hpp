@@ -912,11 +912,14 @@ inline GenerationResult Pipeline::generate(
                                      sample_width};
     xt::random::seed(req.seed);
     xt::xarray<float> latents = xt::random::randn<float>(shape);
-    xt::xarray<float> latents_noise;
-
-    if (req.img2img) {
-      latents_noise = xt::random::randn<float>(shape);
-    };
+    // This draw must happen for txt2img too (value discarded), not only for
+    // img2img: ancestral/stochastic schedulers (Euler A, DPM++, LCM) draw
+    // per-step noise from the same global engine during the loop, so
+    // skipping it shifts the stream and silently changes txt2img outputs for
+    // a given seed vs. every earlier build — breaking seed reproducibility
+    // of existing history images. Costs one transient latent, freed at scope
+    // end; real memory wins come from the orphan/leak fixes, not this.
+    xt::xarray<float> latents_noise = xt::random::randn<float>(shape);
 
     // Scale initial latents by init_noise_sigma (required for Euler
     // schedulers).
