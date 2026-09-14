@@ -448,7 +448,7 @@ fun ShareParamsFlow(
             val clipboard =
                 context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
             clipboard?.setPrimaryClip(
-                ClipData.newPlainText("Offline Latent Forge params", payload),
+                ClipData.newPlainText("Latent Forge params", payload),
             )
             Toast.makeText(context, msgShareCopied, Toast.LENGTH_SHORT).show()
             onCopied()

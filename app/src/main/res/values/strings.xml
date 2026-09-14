@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <string name="app_name">Offline Latent Forge</string>
+    <string name="app_name">Latent Forge</string>
 
     <!-- Models -->
     <string name="anythingv5_description">Anime Image Generation</string>
@@ -403,7 +403,7 @@
     <string name="backup_import_done">Imported %1$d, skipped %2$d duplicates, %3$d failed</string>
     <string name="backup_import_orphan_note">%1$d models in this backup are not installed. Their records were imported and can be viewed via the history filter (All models).</string>
     <string name="backup_failed">Operation failed: %1$s</string>
-    <string name="backup_invalid_file">Not a valid Offline Latent Forge backup file</string>
+    <string name="backup_invalid_file">Not a valid Latent Forge backup file</string>
     <string name="delete_keep_history">Keep generation history</string>
     <string name="delete_keep_history_hint">History stays viewable in the history page after the model is deleted</string>
 
@@ -470,7 +470,7 @@
     <!-- Device link (remote control between two devices) -->
     <string name="remote_link">Device link</string>
     <string name="remote_host_section">Host mode (this device runs models)</string>
-    <string name="remote_host_hint">Let another device running Offline Latent Forge on the same network browse this device\'s models and generate images with them. While host mode is on, the control port (8808) and the generation port (8081) are open to your local network.</string>
+    <string name="remote_host_hint">Let another device running Latent Forge on the same network browse this device\'s models and generate images with them. While host mode is on, the control port (8808) and the generation port (8081) are open to your local network.</string>
     <string name="remote_host_start">Enter host mode</string>
     <string name="remote_host_stop">Exit host mode</string>
     <string name="remote_host_addresses">This device\'s address</string>
@@ -492,7 +492,7 @@
     <string name="remote_select_failed">Failed to start the model on the host</string>
     <string name="remote_port_hint">Default control port: %1$d. Use address:port to override.</string>
     <string name="remote_host_notify_title">Host mode active</string>
-    <string name="remote_host_notify">Offline Latent Forge can be controlled from your local network</string>
+    <string name="remote_host_notify">Latent Forge can be controlled from your local network</string>
     <string name="remote_pairing_code">Pairing code: %1$s</string>
     <string name="remote_pairing_code_label">Pairing code (shown on the host; leave empty if unused)</string>
     <string name="remote_screen_shield">Black screen (stay awake)</string>

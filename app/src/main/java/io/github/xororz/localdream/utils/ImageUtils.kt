@@ -298,7 +298,7 @@ suspend fun saveImage(context: Context, bitmap: Bitmap, onSuccess: () -> Unit, o
                     put(MediaStore.Images.Media.MIME_TYPE, mimeType)
                     put(
                         MediaStore.Images.Media.RELATIVE_PATH,
-                        Environment.DIRECTORY_PICTURES + "/OfflineLatentForge",
+                        Environment.DIRECTORY_PICTURES + "/LatentForge",
                     )
                 }
 
@@ -326,7 +326,7 @@ suspend fun saveImage(context: Context, bitmap: Bitmap, onSuccess: () -> Unit, o
                     Environment.getExternalStoragePublicDirectory(
                         Environment.DIRECTORY_PICTURES,
                     ),
-                    "OfflineLatentForge",
+                    "LatentForge",
                 )
 
                 if (!imagesDir.exists()) {
@@ -371,7 +371,7 @@ suspend fun saveImage(context: Context, bitmap: Bitmap, onSuccess: () -> Unit, o
 }
 
 /**
- * Copies a pre-encoded image file (PNG/JPEG) into the Pictures/OfflineLatentForge gallery
+ * Copies a pre-encoded image file (PNG/JPEG) into the Pictures/LatentForge gallery
  * folder without decoding + re-encoding. Used for batch-saving history items
  * where the source file is already in the format we want to export.
  */
@@ -393,7 +393,7 @@ suspend fun saveImageFromFile(context: Context, sourceFile: File, onSuccess: () 
                     put(MediaStore.Images.Media.MIME_TYPE, mimeType)
                     put(
                         MediaStore.Images.Media.RELATIVE_PATH,
-                        Environment.DIRECTORY_PICTURES + "/OfflineLatentForge",
+                        Environment.DIRECTORY_PICTURES + "/LatentForge",
                     )
                 }
                 val resolver = context.contentResolver
@@ -410,7 +410,7 @@ suspend fun saveImageFromFile(context: Context, sourceFile: File, onSuccess: () 
                     Environment.getExternalStoragePublicDirectory(
                         Environment.DIRECTORY_PICTURES,
                     ),
-                    "OfflineLatentForge",
+                    "LatentForge",
                 )
                 if (!imagesDir.exists()) imagesDir.mkdirs()
                 val outFile = File(imagesDir, filename)

@@ -1,6 +1,6 @@
 <div align="center">
 
-# Offline Latent Forge <img src="./assets/icon.png" width="32" alt="Offline Latent Forge">
+# Latent Forge <img src="./assets/icon.png" width="32" alt="Latent Forge">
 
 **Android Stable Diffusion with Snapdragon NPU acceleration**
 _Local inference, no cloud, no accounts. CPU/GPU inference also supported._
@@ -11,22 +11,27 @@ _Local inference, no cloud, no accounts. CPU/GPU inference also supported._
 
 ## About This Fork
 
-**Offline Latent Forge** is a community fork of
+**Latent Forge** (repo: Offline-Latent-Forge) is a community fork of
 [Local Dream](https://github.com/xororz/local-dream) by
 [xororz](https://github.com/xororz). All of upstream's capabilities are here —
 plus the fork's own additions, kept in sync with upstream where practical:
 
+- **Privacy & security first.** Everything runs locally — no cloud, no
+  accounts, no telemetry. Remote generation is authenticated: host mode
+  issues a pairing token and unauthenticated requests are rejected with 401.
+  Sensitive data (prompts, images, history database, per-model settings) is
+  excluded from cloud backup and device transfer — the only intentional path
+  out is the History screen's explicit export/import.
+- **Verified downloads.** Model and asset downloads are integrity-checked:
+  SHA-256 digests taken from Hugging Face's `X-Linked-ETag` metadata,
+  size validation, and TOFU pinning for non-HF sources, so a corrupted or
+  tampered artifact fails loudly instead of silently loading.
 - **Refined generation controls** — collapsible advanced-settings card,
   batch/seed interplay (batch is locked to 1 while a seed is set, with an
   explanatory dialog), live UltraFix denoise-strength feedback, finer CFG
   support for DMD2 checkpoints.
 - **First-class "upscale" mode** — upscaled copies are recorded and filterable
   as their own mode in history instead of inheriting the source mode.
-- **Download integrity** — SHA-256 verification using Hugging Face's
-  `X-Linked-ETag`/`X-Linked-Size` metadata, with TOFU pinning for non-HF
-  sources.
-- **Privacy by default** — prompts, images, and the history database are
-  excluded from cloud backup and device transfer.
 - **Windows build support** — a first-class `build.bat` native-engine build
   route (NDK r28+), alongside upstream's Linux flow.
 - **Install-friendly builds** — repo-committed debug keystore so CI builds
@@ -52,7 +57,7 @@ devices on the same network (host mode / LAN access).
 ## Install
 
 Grab the latest APK from the
-[Releases](https://github.com/Jakesnowy/reverie/releases) page:
+[Releases](https://github.com/Jakesnowy/Offline-Latent-Forge/releases) page:
 
 - `basic` — standard build.
 - `filter` — adds the NSFW checker (enforces the threshold).

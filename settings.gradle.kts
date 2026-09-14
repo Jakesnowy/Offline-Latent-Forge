@@ -20,5 +20,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "OfflineLatentForge"
+rootProject.name = "LatentForge"
 include(":app")

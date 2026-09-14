@@ -39,7 +39,7 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        // Fork identity (Offline Latent Forge). Deliberately distinct from
+        // Fork identity (Latent Forge). Deliberately distinct from
         // upstream's io.github.xororz.localdream so the fork installs
         // side-by-side with it; switching either way is a fresh install.
         // The namespace (and the Kotlin package) stay on the upstream name
@@ -179,7 +179,7 @@ androidComponents {
         variant.outputs.forEach { output ->
             val versionName = output.versionName.orNull
             if (output is com.android.build.api.variant.impl.VariantOutputImpl) {
-                output.outputFileName.set("OfflineLatentForge_armv8a_$versionName.apk")
+                output.outputFileName.set("LatentForge_armv8a_$versionName.apk")
             }
         }
     }
