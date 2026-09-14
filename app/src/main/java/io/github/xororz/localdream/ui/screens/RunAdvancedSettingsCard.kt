@@ -82,6 +82,8 @@ import kotlin.math.roundToInt
 internal fun RunAdvancedSettingsCard(
     expanded: Boolean,
     onToggleExpanded: () -> Unit,
+    generationMode: String,
+    onGenerationModeChange: (String) -> Unit,
     isSdxl: Boolean,
     runOnCpu: Boolean,
     useImg2img: Boolean,
@@ -119,6 +121,12 @@ internal fun RunAdvancedSettingsCard(
 ) {
     val seedSet = seed.isNotBlank()
     val focusManager = LocalFocusManager.current
+
+    // Local mirror of the persisted generation mode: updates immediately on
+    // tap (pref writes don't trigger recomposition) and re-syncs when the
+    // prop changes (model switch re-reads the pref).
+    var selectedMode by remember(generationMode) { mutableStateOf(generationMode) }
+    val activeMode = selectedMode.ifBlank { generationMode }
 
     // Last free (seed-less) batch position, restored when the seed is cleared.
     var retainedBatch by rememberSaveable { mutableFloatStateOf(1f) }
@@ -190,6 +198,53 @@ internal fun RunAdvancedSettingsCard(
                         },
                         contentDescription = stringResource(R.string.advanced_settings_title),
                     )
+                }
+            }
+
+            // Generation mode: standard (default), stepping (watch the
+            // composition form step by step, then keep / extend / discard),
+            // or sweep (the same seed rendered at 1/3, 2/3 and the full step
+            // count). Styled after the dark mode selection.
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    stringResource(R.string.generation_mode),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(
+                        ButtonGroupDefaults.ConnectedSpaceBetween,
+                    ),
+                ) {
+                    val modeOptions = listOf(
+                        "standard" to R.string.gen_mode_standard,
+                        "stepping" to R.string.gen_mode_stepping,
+                        "sweep" to R.string.gen_mode_sweep,
+                    )
+                    modeOptions.forEachIndexed { index, (id, label) ->
+                        val shapes = when (index) {
+                            0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
+                            modeOptions.lastIndex ->
+                                ButtonGroupDefaults.connectedTrailingButtonShapes()
+
+                            else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
+                        }
+                        ToggleButton(
+                            checked = activeMode == id,
+                            onCheckedChange = { checked ->
+                                if (checked) {
+                                    selectedMode = id
+                                    onGenerationModeChange(id)
+                                }
+                            },
+                            shapes = shapes,
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Text(stringResource(label))
+                        }
+                    }
                 }
             }
 
@@ -538,6 +593,9 @@ internal fun RunAdvancedSettingsCard(
                     // Batch sits below the seed and is forced to 1 while a
                     // seed is set (the engine ignores batch counts for fixed
                     // seeds); tapping it explains and offers to clear the seed.
+                    // Stepping/sweep modes also lock batch to 1 (sweep drives
+                    // its own multi-image run plan).
+                    val batchLocked = seedSet || activeMode != "standard"
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -557,19 +615,19 @@ internal fun RunAdvancedSettingsCard(
                             Text(
                                 stringResource(
                                     R.string.batch_count,
-                                    if (seedSet) 1 else batchCounts,
+                                    if (batchLocked) 1 else batchCounts,
                                 ),
                                 style = MaterialTheme.typography.bodyMedium,
                             )
                             Slider(
-                                value = if (seedSet) 1f else batchCounts.toFloat(),
+                                value = if (batchLocked) 1f else batchCounts.toFloat(),
                                 onValueChange = { value ->
                                     retainedBatch = value
                                     onBatchCountsChange(value)
                                 },
                                 valueRange = 1f..10f,
                                 steps = 8,
-                                enabled = !seedSet,
+                                enabled = !batchLocked,
                                 modifier = Modifier.fillMaxWidth(),
                             )
                         }

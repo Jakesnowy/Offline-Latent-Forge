@@ -33,6 +33,14 @@
     <string name="tag_download">ダウンロード</string>
     <string name="tag_downloading">ダウンロード中… %d%%</string>
     <string name="tag_download_failed">ダウンロードに失敗しました: %s</string>
+    <string name="generation_mode">生成モード</string>
+    <string name="gen_mode_standard">スタンダード</string>
+    <string name="gen_mode_stepping">ステッピング</string>
+    <string name="gen_mode_sweep">スイープ</string>
+    <string name="stepping_dialog_title">ステッピング結果</string>
+    <string name="stepping_keep">保持</string>
+    <string name="stepping_one_more">もう1ステップ</string>
+    <string name="stepping_discard">破棄</string>
     <string name="sdxl_lowram">SDXL 低メモリモード</string>
     <string name="sdxl_lowram_hint">SDXL 専用：各モデルを必要時にのみ読み込み、使用後に解放します。16GB 未満のデバイスでは有効化してください。生成途中のプレビューは無効になります。</string>
     <string name="anima_lowram">Anima 低メモリモード</string>

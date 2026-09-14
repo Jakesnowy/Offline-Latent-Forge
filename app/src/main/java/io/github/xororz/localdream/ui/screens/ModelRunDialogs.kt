@@ -1,5 +1,7 @@
 package io.github.xororz.localdream.ui.screens
 
+import android.graphics.Bitmap
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -20,6 +22,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.input.KeyboardType
@@ -154,6 +157,54 @@ internal fun CustomAspectRatioDialog(onConfirm: (String) -> Unit, onDismiss: () 
         dismissButton = {
             TextButton(onClick = onDismiss) {
                 Text(stringResource(R.string.cancel))
+            }
+        },
+    )
+}
+
+/** Stepping mode: keep / one-more-step / discard decision for a finished run. */
+@Composable
+internal fun SteppingResultDialog(
+    bitmap: Bitmap?,
+    onKeep: () -> Unit,
+    onOneMoreStep: () -> Unit,
+    onDiscard: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onKeep,
+        title = { Text(stringResource(R.string.stepping_dialog_title)) },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                bitmap?.let { bmp ->
+                    Image(
+                        bitmap = bmp.asImageBitmap(),
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onKeep) {
+                Text(stringResource(R.string.stepping_keep))
+            }
+        },
+        dismissButton = {
+            Row {
+                TextButton(onClick = onOneMoreStep) {
+                    Text(stringResource(R.string.stepping_one_more))
+                }
+                TextButton(
+                    onClick = onDiscard,
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error,
+                    ),
+                ) {
+                    Text(stringResource(R.string.stepping_discard))
+                }
             }
         },
     )

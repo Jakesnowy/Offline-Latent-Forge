@@ -35,6 +35,14 @@
     <string name="tag_download">Download</string>
     <string name="tag_downloading">Downloading… %d%%</string>
     <string name="tag_download_failed">Download failed: %s</string>
+    <string name="generation_mode">Generation mode</string>
+    <string name="gen_mode_standard">Standard</string>
+    <string name="gen_mode_stepping">Stepping</string>
+    <string name="gen_mode_sweep">Sweep</string>
+    <string name="stepping_dialog_title">Stepping result</string>
+    <string name="stepping_keep">Keep</string>
+    <string name="stepping_one_more">One more step</string>
+    <string name="stepping_discard">Discard</string>
     <string name="sdxl_lowram">SDXL low RAM mode</string>
     <string name="sdxl_lowram_hint">For SDXL only: load each model on demand and free it after use. Required on devices with less than 16GB RAM. Disables in-progress preview.</string>
     <string name="anima_lowram">Anima low RAM mode</string>

@@ -33,6 +33,14 @@
     <string name="tag_download">다운로드</string>
     <string name="tag_downloading">다운로드 중… %d%%</string>
     <string name="tag_download_failed">다운로드 실패: %s</string>
+    <string name="generation_mode">생성 모드</string>
+    <string name="gen_mode_standard">표준</string>
+    <string name="gen_mode_stepping">스테핑</string>
+    <string name="gen_mode_sweep">스윕</string>
+    <string name="stepping_dialog_title">스테핑 결과</string>
+    <string name="stepping_keep">유지</string>
+    <string name="stepping_one_more">한 스텝 더</string>
+    <string name="stepping_discard">버리기</string>
     <string name="sdxl_lowram">SDXL 저메모리 모드</string>
     <string name="sdxl_lowram_hint">SDXL 전용: 각 모델을 필요할 때만 로드하고 사용 후 해제합니다. RAM이 16GB 미만인 기기에서 필요합니다. 생성 중 미리보기가 비활성화됩니다.</string>
     <string name="anima_lowram">Anima 저메모리 모드</string>

@@ -120,6 +120,16 @@ internal fun RunPromptPage(
                 onToggleExpanded = {
                     setupState.showAdvancedSettings = !setupState.showAdvancedSettings
                 },
+                generationMode = context.getSharedPreferences(
+                    "app_prefs",
+                    Context.MODE_PRIVATE,
+                ).getString("generation_mode", "standard") ?: "standard",
+                onGenerationModeChange = { mode ->
+                    context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+                        .edit()
+                        .putString("generation_mode", mode)
+                        .apply()
+                },
                 isSdxl = model?.usesFixedCanvas == true,
                 runOnCpu = model?.runOnCpu ?: false,
                 useImg2img = useImg2img,

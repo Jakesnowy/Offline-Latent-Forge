@@ -51,6 +51,10 @@ struct GenerationRequest {
   bool use_opencl = false;
   bool show_diffusion_process = false;
   int show_diffusion_stride = 1;
+  // CPU-side approximate previews (see Pipeline::renderLightPreview). When
+  // set, per-step previews are forced on (stride 1) and rendered by the CPU
+  // instead of the NPU VAE decoder.
+  bool light_previews = false;
   int width = 512;
   int height = 512;
   float denoise_strength = 0.6f;
@@ -309,6 +313,8 @@ class Pipeline {
   }
   std::string renderPreview(const GenerationRequest &req,
                             const xt::xarray<float> &latents);
+  std::string renderLightPreview(const GenerationRequest &req,
+                                 const xt::xarray<float> &latents);
 
   // All VAE decoders (SD/SDXL and Anima) emit pixels in [-1,1], so map them
   // back with (x+1)/2 then *255.
@@ -858,6 +864,68 @@ inline std::string Pipeline::renderPreview(const GenerationRequest &req,
   }
 }
 
+// Light latent preview: approximate RGB rendered entirely on the CPU from the
+// latent channels — no NPU VAE roundtrip, so it costs ~1 ms and works even
+// when the VAE decoder is swapped out (lowram mode). The first three latent
+// channels are per-channel contrast-stretched into RGB (colors are
+// approximate by design; the composition is what matters), then
+// nearest-neighbor upscaled to the preview size. Used by the stepping/sweep
+// generation modes for per-step previews. Returns "" on failure.
+inline std::string Pipeline::renderLightPreview(const GenerationRequest &req,
+                                                const xt::xarray<float> &latents) {
+  try {
+    xt::xarray<float> lat = latents;
+    latentsToVae(lat);
+    const auto shape = lat.shape();
+    const int lh = static_cast<int>(shape[2]);
+    const int lw = static_cast<int>(shape[3]);
+    const int out_w = req.width;
+    const int out_h = req.height;
+
+    // Per-channel min/max over channels 0..2 for the contrast stretch.
+    float mins[3] = {0.0f, 0.0f, 0.0f};
+    float maxs[3] = {0.0f, 0.0f, 0.0f};
+    const float *data = lat.data();
+    for (int c = 0; c < 3; ++c) {
+      float lo = data[static_cast<size_t>(c) * lh * lw];
+      float hi = lo;
+      for (int i = 1; i < lh * lw; ++i) {
+        float v = data[static_cast<size_t>(c) * lh * lw + i];
+        lo = std::min(lo, v);
+        hi = std::max(hi, v);
+      }
+      mins[c] = lo;
+      maxs[c] = hi;
+    }
+
+    std::vector<uint8_t> out_data(3 * out_w * out_h);
+    for (int y = 0; y < out_h; ++y) {
+      int sy = std::min(y * lh / out_h, lh - 1);
+      for (int x = 0; x < out_w; ++x) {
+        int sx = std::min(x * lw / out_w, lw - 1);
+        for (int c = 0; c < 3; ++c) {
+          float v = data[static_cast<size_t>(c) * lh * lw +
+                         static_cast<size_t>(sy) * lw + sx];
+          float norm = (v - mins[c]) /
+                       std::max(1e-6f, maxs[c] - mins[c]);
+          out_data[(static_cast<size_t>(y) * out_w + x) * 3 + c] =
+              static_cast<uint8_t>(std::clamp(norm * 255.0f, 0.0f, 255.0f));
+        }
+      }
+    }
+
+    if (needsAspectCrop(req)) {
+      cropCenter(out_data, req.width, req.height, req.target_crop_width,
+                 req.target_crop_height);
+    }
+    std::string image_str_result(out_data.begin(), out_data.end());
+    return base64_encode(image_str_result);
+  } catch (const std::exception &e) {
+    QNN_WARN("Light preview generation failed: %s", e.what());
+    return "";
+  }
+}
+
 inline GenerationResult Pipeline::generate(
     GenerationRequest &req, const ProgressCallback &progress_callback) {
   if (req.prompt.empty()) throw std::invalid_argument("Prompt empty");
@@ -1034,10 +1102,12 @@ inline GenerationResult Pipeline::generate(
     beginDenoise(req);
 
     for (int i = start_step; i < (int)timesteps.size(); ++i) {
-      if (req.show_diffusion_process && previewSupported() &&
-          (i - start_step) % req.show_diffusion_stride == 0) {
+      bool light = req.light_previews;
+      if (light || (req.show_diffusion_process && previewSupported() &&
+                    (i - start_step) % req.show_diffusion_stride == 0)) {
         progress_callback(current_step, total_run_steps,
-                          renderPreview(req, latents));
+                          light ? renderLightPreview(req, latents)
+                                : renderPreview(req, latents));
       } else {
         progress_callback(current_step, total_run_steps, "");
       }

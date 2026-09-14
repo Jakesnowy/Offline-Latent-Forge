@@ -1349,6 +1349,8 @@ fun ModelRunScreen(
         )
     }
 
+
+
     if (setupState.showResetConfirmDialog) {
         ModelRunConfirmDialog(
             title = stringResource(R.string.reset),
@@ -1483,12 +1485,38 @@ fun ModelRunScreen(
             "start generation batch: ${runState.batchCounts} times",
         )
 
-        // If runState.seed is set, only generate once regardless of batch count
-        val actualBatchCount =
-            if (runState.seed.isNotBlank()) 1 else runState.batchCounts
+        val generationMode = context.getSharedPreferences(
+            "app_prefs",
+            Context.MODE_PRIVATE,
+        ).getString("generation_mode", "standard") ?: "standard"
+        setupState.generationMode = generationMode
+
+        Log.d(
+            "ModelRunScreen",
+            "start generation batch: ${runState.batchCounts} times (mode: $generationMode)",
+        )
+
+        // Run plan: standard = N runs at the selected step count (batch);
+        // sweep = 3 runs on the same seed at 1/3, 2/3 and the full step count
+        // (each run is saved — a step-range comparison along one seed).
+        val baseSeed = runState.seed.toLongOrNull()
+        val runPlan: List<Int> = when (generationMode) {
+            "sweep" -> {
+                val s = runState.steps.roundToInt()
+                val third = (s / 3).coerceAtLeast(1)
+                val twoThirds = (2 * s / 3).coerceAtLeast(third + 1)
+                listOf(third, twoThirds, s)
+            }
+            else -> {
+                val actualBatchCount =
+                    if (runState.seed.isNotBlank()) 1 else runState.batchCounts
+                List(actualBatchCount) { runState.steps.roundToInt() }
+            }
+        }
 
         batchGenerationJob = coroutineScope.launch {
-            for (i in 0 until actualBatchCount) {
+            var sweepSeed: Long? = null
+            for ((i, iterSteps) in runPlan.withIndex()) {
                 runState.currentBatchIndex = i + 1
                 Log.d(
                     "ModelRunScreen",
@@ -1498,7 +1526,7 @@ fun ModelRunScreen(
                 // Update setupState.generationParamsTmp to reflect current parameters
                 // This allows parameters to be changed during batch execution
                 setupState.generationParamsTmp = GenerationParameters(
-                    steps = runState.steps.roundToInt(),
+                    steps = iterSteps,
                     cfg = runState.cfg,
                     seed = 0,
                     prompt = promptField.text,
@@ -1521,10 +1549,19 @@ fun ModelRunScreen(
                         "negative_prompt",
                         negativePromptField.text,
                     )
-                    putExtra("steps", runState.steps.roundToInt())
+                    putExtra("steps", iterSteps)
                     putExtra("cfg", runState.cfg)
-                    runState.seed.toLongOrNull()
-                        ?.let { putExtra("seed", it) }
+                    // Sweep: lock the seed after the first run so every image
+                    // in the range shares it.
+                    val iterSeed = if (generationMode == "sweep") {
+                        if (i == 0) baseSeed else sweepSeed
+                    } else {
+                        runState.seed.toLongOrNull()
+                    }
+                    iterSeed?.let { putExtra("seed", it) }
+                    if (generationMode != "standard") {
+                        putExtra("generation_mode", generationMode)
+                    }
                     putExtra("width", setupState.currentWidth)
                     putExtra("height", setupState.currentHeight)
                     // Backend now crops runState.progress previews to the
@@ -1562,11 +1599,16 @@ fun ModelRunScreen(
                     "start service sent - batch $i",
                 )
 
-                BackgroundGenerationService.generationState
+                val completedState = BackgroundGenerationService.generationState
                     .first { state ->
                         state is GenerationState.Complete ||
                             state is GenerationState.Error
                     }
+                if (generationMode == "sweep" && i == 0 &&
+                    completedState is GenerationState.Complete
+                ) {
+                    sweepSeed = completedState.seed
+                }
 
                 Log.d(
                     "ModelRunScreen",
@@ -2010,6 +2052,38 @@ fun ModelRunScreen(
 
     // Runs the confirmed upscale over the currently displayed bitmap and
     // saves the result (DB + JPG) via HistoryManager.
+    if (setupState.showSteppingDialog) {
+        SteppingResultDialog(
+            bitmap = resultState.currentBitmap,
+            onKeep = {
+                setupState.showSteppingDialog = false
+                setupState.steppingSavedItem = null
+            },
+            onOneMoreStep = {
+                setupState.showSteppingDialog = false
+                setupState.steppingSavedItem?.let { item ->
+                    coroutineScope.launch(Dispatchers.IO) {
+                        historyManager.deleteHistoryItem(item)
+                    }
+                }
+                setupState.steppingSavedItem = null
+                resultState.currentDisplayedHistoryId = null
+                runState.steps = (runState.steps.roundToInt() + 1).toFloat()
+                startGeneration()
+            },
+            onDiscard = {
+                setupState.showSteppingDialog = false
+                setupState.steppingSavedItem?.let { item ->
+                    coroutineScope.launch(Dispatchers.IO) {
+                        historyManager.deleteHistoryItem(item)
+                    }
+                }
+                setupState.steppingSavedItem = null
+                resultState.currentDisplayedHistoryId = null
+            },
+        )
+    }
+
     fun runUpscale(selectedUpscaler: UpscalerModel, selectedScale: Int) {
         // Execute upscale
         resultState.currentBitmap?.let { bitmap ->

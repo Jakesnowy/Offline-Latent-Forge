@@ -165,6 +165,9 @@ class BackgroundGenerationService : Service() {
         // base-image file so a pending img2img selection in tmp.txt survives.
         val ultrafix = intent.getBooleanExtra("ultrafix", false)
         val ultrafixTileSize = intent.getIntExtra("ultrafix_tile_size", 512)
+        // Generation mode: standard | stepping | sweep (stepping/sweep stream
+        // lightweight CPU-side previews every step).
+        val generationMode = intent.getStringExtra("generation_mode") ?: "standard"
         // Backend to talk to: the local backend by default, or a remote host's
         // generation port when running in connected-device mode.
         val backendHost = intent.getStringExtra("backend_host") ?: LOCAL_BACKEND_HOST
@@ -246,6 +249,7 @@ class BackgroundGenerationService : Service() {
                 aspectRatio,
                 ultrafix,
                 ultrafixTileSize,
+                generationMode,
                 backendHost,
                 authToken,
             )
@@ -273,6 +277,7 @@ class BackgroundGenerationService : Service() {
         aspectRatio: String,
         ultrafix: Boolean,
         ultrafixTileSize: Int,
+        generationMode: String,
         backendHost: String,
         authToken: String?,
     ) = withContext(Dispatchers.IO) {
@@ -300,10 +305,19 @@ class BackgroundGenerationService : Service() {
                 put("denoise_strength", denoiseStrength)
                 put("use_opencl", useOpenCL)
                 put("scheduler", scheduler)
-                // Ultrafix never streams previews: each one would tile-decode
-                // the full image (the backend rejects it as well).
-                put("show_diffusion_process", if (ultrafix) false else showProcess)
-                put("show_diffusion_stride", showStride)
+                // Ultrafix never streams NPU-decoded previews: each one would
+                // tile-decode the full image (the backend rejects it as well).
+                // Stepping/sweep stream CPU-side light previews every step
+                // regardless (no NPU contention, works in lowram too).
+                if (generationMode != "standard") {
+                    put("generation_mode", generationMode)
+                    put("light_previews", true)
+                    put("show_diffusion_process", true)
+                    put("show_diffusion_stride", 1)
+                } else {
+                    put("show_diffusion_process", if (ultrafix) false else showProcess)
+                    put("show_diffusion_stride", showStride)
+                }
                 if (ultrafix) {
                     put("ultrafix", true)
                     put("tile_size", ultrafixTileSize)

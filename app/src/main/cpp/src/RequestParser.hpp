@@ -35,6 +35,10 @@ inline GenerationRequest parseGenerationRequest(const nlohmann::json &json,
   req.use_opencl = json.value("use_opencl", false);
   req.show_diffusion_process = json.value("show_diffusion_process", false);
   req.show_diffusion_stride = json.value("show_diffusion_stride", 1);
+  // Light previews: approximate RGB rendered on the CPU from the latent
+  // channels (no NPU VAE roundtrip). Used by the app's stepping/sweep
+  // generation modes; forces per-step previews regardless of the stride.
+  req.light_previews = json.value("light_previews", false);
   // --- Consolidated request limits ---------------------------------------
   // These mirror the app's own UI ranges (GenerationDefaults.kt on the
   // Kotlin side). The engine is authoritative: out-of-range values are

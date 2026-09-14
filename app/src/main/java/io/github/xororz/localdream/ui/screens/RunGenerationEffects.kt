@@ -123,6 +123,9 @@ internal fun RunGenerationEffects(
                                     resultState.stitchableHistoryIds = setOf(savedItem.id)
                                 }
                                 resultState.currentDisplayedHistoryId = savedItem.id
+                                if (setupState.generationMode == "stepping") {
+                                    setupState.steppingSavedItem = savedItem
+                                }
                             }
                         }
                     }
@@ -144,6 +147,12 @@ internal fun RunGenerationEffects(
                     // the DB save above resolves.
                     resultState.stitchableHistoryIds = emptySet()
                     resultState.currentDisplayedHistoryId = null
+
+                    // Stepping mode: hold the just-saved result for the
+                    // keep / one-more-step / discard decision dialog.
+                    if (setupState.generationMode == "stepping") {
+                        setupState.showSteppingDialog = true
+                    }
 
                     Log.d(
                         "ModelRunScreen",

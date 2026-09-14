@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import io.github.xororz.localdream.data.Resolution
+import io.github.xororz.localdream.data.HistoryItem
 
 /**
  * Remaining screen-setup state for [ModelRunScreen], hoisted out of the
@@ -38,4 +39,16 @@ class RunSetupState(
     var backendRestartTrigger by mutableIntStateOf(0)
 
     var isPreviewMode by mutableStateOf(false)
+
+    // Generation mode ("standard" | "stepping" | "sweep") — a workflow
+    // preference persisted in app_prefs, mirrored here so the completion
+    // handler (RunGenerationEffects) and the stepping dialog can read it.
+    var generationMode by mutableStateOf("standard")
+
+    // Stepping mode: when set, the last completed run is awaiting the user's
+    // keep / one-more-step / discard decision. The image is already saved;
+    // one-more-step and discard remove it (steppingSavedItem carries the
+    // saved history entry for the delete).
+    var showSteppingDialog by mutableStateOf(false)
+    var steppingSavedItem by mutableStateOf<HistoryItem?>(null)
 }
