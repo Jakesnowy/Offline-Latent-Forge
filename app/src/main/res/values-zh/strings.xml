@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <string name="app_name">Local Dream</string>
+    <string name="app_name">Offline Latent Forge</string>
 
     <!-- Models -->
     <string name="anythingv5_description">动漫图像生成模型</string>
@@ -389,7 +389,7 @@
     <string name="backup_import_done">已导入 %1$d 条,跳过重复 %2$d 条,失败 %3$d 条</string>
     <string name="backup_import_orphan_note">备份中有 %1$d 个模型未安装,这些记录已导入,可在历史筛选中选择全部模型查看。</string>
     <string name="backup_failed">操作失败: %1$s</string>
-    <string name="backup_invalid_file">不是有效的 Local Dream 备份文件</string>
+    <string name="backup_invalid_file">不是有效的 Offline Latent Forge 备份文件</string>
     <string name="delete_keep_history">保留生成历史</string>
     <string name="delete_keep_history_hint">删除模型后历史记录仍可在历史页查看</string>
 
@@ -453,7 +453,7 @@
     <!-- Device link (remote control between two devices) -->
     <string name="remote_link">设备互联</string>
     <string name="remote_host_section">受控模式（本机运行模型）</string>
-    <string name="remote_host_hint">允许同一网络中另一台安装 Local Dream 的设备浏览本机模型并用其生成图片。受控模式开启期间，控制端口（8808）和生成端口（8081）会对局域网开放。</string>
+    <string name="remote_host_hint">允许同一网络中另一台安装 Offline Latent Forge 的设备浏览本机模型并用其生成图片。受控模式开启期间，控制端口（8808）和生成端口（8081）会对局域网开放。</string>
     <string name="remote_host_start">进入受控模式</string>
     <string name="remote_host_stop">退出受控模式</string>
     <string name="remote_host_addresses">本机地址</string>
@@ -474,7 +474,7 @@
     <string name="remote_select_failed">在主机上启动模型失败</string>
     <string name="remote_port_hint">默认控制端口：%1$d。可用 地址:端口 形式指定其他端口。</string>
     <string name="remote_host_notify_title">受控模式运行中</string>
-    <string name="remote_host_notify">Local Dream 可被局域网内设备控制</string>
+    <string name="remote_host_notify">Offline Latent Forge 可被局域网内设备控制</string>
     <string name="remote_screen_shield">纯黑屏幕（保持运行）</string>
     <string name="remote_screen_shield_exit">轻触退出</string>
     <string name="ultrafix_import_action">导入本机图片</string>

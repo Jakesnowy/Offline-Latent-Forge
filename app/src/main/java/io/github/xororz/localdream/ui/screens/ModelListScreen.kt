@@ -575,7 +575,7 @@ fun ModelListScreen(navController: NavController, modifier: Modifier = Modifier)
                                     put(MediaStore.Downloads.MIME_TYPE, "text/plain")
                                     put(
                                         MediaStore.Downloads.RELATIVE_PATH,
-                                        Environment.DIRECTORY_DOWNLOADS + "/LocalDream",
+                                        Environment.DIRECTORY_DOWNLOADS + "/OfflineLatentForge",
                                     )
                                 }
                                 val resolver = context.contentResolver
@@ -586,13 +586,13 @@ fun ModelListScreen(navController: NavController, modifier: Modifier = Modifier)
                                 resolver.openOutputStream(uri)?.use { out ->
                                     out.write(capturedLogs.toByteArray(Charsets.UTF_8))
                                 } ?: throw java.io.IOException("openOutputStream failed")
-                                "Downloads/LocalDream/$filename"
+                                "Downloads/OfflineLatentForge/$filename"
                             } else {
                                 val dir = File(
                                     Environment.getExternalStoragePublicDirectory(
                                         Environment.DIRECTORY_DOWNLOADS,
                                     ),
-                                    "LocalDream",
+                                    "OfflineLatentForge",
                                 )
                                 if (!dir.exists()) dir.mkdirs()
                                 val file = File(dir, filename)
@@ -841,7 +841,7 @@ fun ModelListScreen(navController: NavController, modifier: Modifier = Modifier)
                 title = {
                     Column {
                         Text(
-                            text = "Local Dream✨",
+                            text = "Offline Latent Forge✨",
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )

@@ -179,11 +179,11 @@ jobs:
         run: |
           SHORT_SHA="${GITHUB_SHA::7}"
           if [ "$RELEASE_KIND" = "beta" ]; then
-            cp app/build/outputs/apk/basic/beta/*.apk  "LocalDream_${SHORT_SHA}_basic_beta.apk"
-            cp app/build/outputs/apk/filter/beta/*.apk "LocalDream_${SHORT_SHA}_filter_beta.apk"
+            cp app/build/outputs/apk/basic/beta/*.apk  "OfflineLatentForge_${SHORT_SHA}_basic_beta.apk"
+            cp app/build/outputs/apk/filter/beta/*.apk "OfflineLatentForge_${SHORT_SHA}_filter_beta.apk"
           else
-            cp app/build/outputs/apk/basic/debug/*.apk  "LocalDream_${SHORT_SHA}_basic_debug.apk"
-            cp app/build/outputs/apk/filter/debug/*.apk "LocalDream_${SHORT_SHA}_filter_debug.apk"
+            cp app/build/outputs/apk/basic/debug/*.apk  "OfflineLatentForge_${SHORT_SHA}_basic_debug.apk"
+            cp app/build/outputs/apk/filter/debug/*.apk "OfflineLatentForge_${SHORT_SHA}_filter_debug.apk"
           fi
 
       # One release per build. The changelog covers commits since the previous
@@ -195,7 +195,7 @@ jobs:
           TAG="${RELEASE_KIND}-${SHORT_SHA}"
           PREV_TAG=$(git tag --list "${RELEASE_KIND}-*" --sort=-creatordate | head -n 1)
           {
-            echo "### LocalDream ${RELEASE_KIND} build \`${SHORT_SHA}\`"
+            echo "### OfflineLatentForge ${RELEASE_KIND} build \`${SHORT_SHA}\`"
             echo
             echo "_Built from \`${GITHUB_REF_NAME}\` at \`${GITHUB_SHA}\` on $(date -u '+%Y-%m-%d %H:%M UTC')._"
             echo
@@ -214,8 +214,8 @@ jobs:
             fi
             echo
             echo "**Install:** allow \"Install unknown apps\" for your browser or file manager, then install the APK for the flavor you want:"
-            echo "- \`LocalDream_${SHORT_SHA}_basic_${RELEASE_KIND}.apk\` — standard build"
-            echo "- \`LocalDream_${SHORT_SHA}_filter_${RELEASE_KIND}.apk\` — adds the NSFW checker (enforces the threshold)"
+            echo "- \`OfflineLatentForge_${SHORT_SHA}_basic_${RELEASE_KIND}.apk\` — standard build"
+            echo "- \`OfflineLatentForge_${SHORT_SHA}_filter_${RELEASE_KIND}.apk\` — adds the NSFW checker (enforces the threshold)"
             echo
             echo "Both flavors include the native engine and share an applicationId — install one at a time. Builds within a line share a signing key, so each new build upgrades in place over the previous one."
           } > release_notes.md
@@ -240,6 +240,6 @@ jobs:
           make_latest: ${{ env.MARK_LATEST }}
           fail_on_unmatched_files: true
           files: |
-            LocalDream_*_basic_*.apk
-            LocalDream_*_filter_*.apk
+            OfflineLatentForge_*_basic_*.apk
+            OfflineLatentForge_*_filter_*.apk
 

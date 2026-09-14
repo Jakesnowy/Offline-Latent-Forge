@@ -39,7 +39,12 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "io.github.xororz.localdream"
+        // Fork identity (Offline Latent Forge). Deliberately distinct from
+        // upstream's io.github.xororz.localdream so the fork installs
+        // side-by-side with it; switching either way is a fresh install.
+        // The namespace (and the Kotlin package) stay on the upstream name
+        // to keep code and upstream merges untouched.
+        applicationId = "io.github.jakesnowy.offlinelatentforge"
         minSdk = 28
 //        minSdk = 31
         targetSdk = 36
@@ -121,12 +126,13 @@ android {
             versionNameSuffix = "-debug"
         }
         // Beta line: this repo's official distribution variant. Deliberately
-        // NO applicationId suffix — it takes the plain io.github.xororz.
-        // localdream id, so it installs side-by-side with debug builds
-        // (.debug id) but switching from the official upstream app needs a
-        // one-time uninstall (same id, different signature). Signed with the
-        // secret-kept beta keystore; CI overrides versionCode so betas
-        // upgrade in order.
+        // NO applicationId suffix — it takes the plain
+        // io.github.jakesnowy.offlinelatentforge id, so it installs
+        // side-by-side with debug builds (.debug id) but switching from the
+        // official upstream app needs a one-time uninstall (different id AND
+        // different signature; app-private data such as downloaded models
+        // does not carry over). Signed with the secret-kept beta keystore;
+        // CI overrides versionCode so betas upgrade in order.
         create("beta") {
             matchingFallbacks += listOf("debug")
             signingConfig = signingConfigs.getByName("beta")
@@ -173,7 +179,7 @@ androidComponents {
         variant.outputs.forEach { output ->
             val versionName = output.versionName.orNull
             if (output is com.android.build.api.variant.impl.VariantOutputImpl) {
-                output.outputFileName.set("LocalDream_armv8a_$versionName.apk")
+                output.outputFileName.set("OfflineLatentForge_armv8a_$versionName.apk")
             }
         }
     }
