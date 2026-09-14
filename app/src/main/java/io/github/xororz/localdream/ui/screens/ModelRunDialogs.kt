@@ -19,6 +19,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
@@ -39,11 +40,23 @@ internal fun ModelRunConfirmDialog(
     confirmText: String = stringResource(R.string.confirm),
     dismissText: String = stringResource(R.string.cancel),
     destructiveConfirm: Boolean = false,
+    subText: String? = null,
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
-        text = { Text(text) },
+        text = {
+            Column {
+                Text(text)
+                if (subText != null) {
+                    Text(
+                        subText,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontStyle = FontStyle.Italic,
+                    )
+                }
+            }
+        },
         confirmButton = {
             TextButton(
                 onClick = onConfirm,

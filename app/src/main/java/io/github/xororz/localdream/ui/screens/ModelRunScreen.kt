@@ -1353,6 +1353,7 @@ fun ModelRunScreen(
         ModelRunConfirmDialog(
             title = stringResource(R.string.reset),
             text = stringResource(R.string.reset_hint),
+            subText = stringResource(R.string.reset_params_note),
             destructiveConfirm = true,
             onConfirm = {
                 val defaults = model?.defaults ?: GenerationDefaults.GLOBAL

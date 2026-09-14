@@ -168,7 +168,9 @@
     <string name="interrupt_generation_hint">생성이 진행 중입니다. 중단하시겠습니까?</string>
     <string name="generation_interrupted">생성이 중단되었습니다</string>
     <string name="reset">초기화</string>
-    <string name="reset_hint">모든 파라미터를 초기화하시겠습니까? 이 작업은 되돌릴 수 없습니다.</string>
+    <string name="reset_hint">이 모델의 기본 매개변수를 복원하시겠습니까? 이 작업은 되돌릴 수 없습니다.</string>
+    <string name="reset_params_note">기본 매개변수는 모델 패키지 제작자가 설정한 것으로, 해당 모델에 맞게 조정되지 않았을 수 있습니다.</string>
+    <string name="seed_set_title">시드가 설정되어 있습니다!</string>
     <string name="media_permission_hint">img2img 생성에는 미디어 권한이 필요합니다</string>
     <string name="backend_failed">백엔드 시작에 실패했습니다. 기기가 지원되지 않을 수 있습니다.</string>
 

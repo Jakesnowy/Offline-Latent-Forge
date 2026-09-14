@@ -52,6 +52,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.Dp
@@ -92,6 +93,7 @@ internal fun RunAdvancedSettingsCard(
     useOpenCL: Boolean,
     batchCounts: Int,
     denoiseStrength: Float,
+    denoiseApplicable: Boolean,
     seed: String,
     returnedSeed: Long?,
     onAspectRatioSelected: (String) -> Unit,
@@ -112,6 +114,7 @@ internal fun RunAdvancedSettingsCard(
     onReset: () -> Unit,
 ) {
     val seedSet = seed.isNotBlank()
+    val focusManager = LocalFocusManager.current
 
     // Last free (seed-less) batch position, restored when the seed is cleared.
     var retainedBatch by rememberSaveable { mutableFloatStateOf(1f) }
@@ -129,11 +132,14 @@ internal fun RunAdvancedSettingsCard(
 
     if (showBatchSeedDialog) {
         ModelRunConfirmDialog(
-            title = stringResource(R.string.batch_count, 1),
+            title = stringResource(R.string.seed_set_title),
             text = stringResource(R.string.batch_seed_incompatible),
             confirmText = stringResource(R.string.clear_seed),
             dismissText = stringResource(R.string.acknowledge),
             onConfirm = {
+                // Drop focus first so clearing the seed doesn't wake the
+                // keyboard on the (now empty) seed field.
+                focusManager.clearFocus(force = true)
                 onSeedChange("")
                 showBatchSeedDialog = false
             },
@@ -529,7 +535,14 @@ internal fun RunAdvancedSettingsCard(
                         }
                     }
                     if (useImg2img) {
-                        Column {
+                        // Greyed (but still adjustable) while the next run
+                        // won't be img2img: purely a visual cue that denoise
+                        // has no effect for txt2img.
+                        Column(
+                            modifier = Modifier.alpha(
+                                if (denoiseApplicable) 1f else 0.4f,
+                            ),
+                        ) {
                             Text(
                                 "[img2img]Denoise Strength: %.2f".format(denoiseStrength),
                                 style = MaterialTheme.typography.bodyMedium,

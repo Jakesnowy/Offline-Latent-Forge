@@ -134,6 +134,8 @@ internal fun RunPromptPage(
                 useOpenCL = runState.useOpenCL,
                 batchCounts = runState.batchCounts,
                 denoiseStrength = runState.denoiseStrength,
+                denoiseApplicable = img2ImgState.isInpaintMode ||
+                    runState.selectedImageUri != null,
                 seed = runState.seed,
                 returnedSeed = runState.returnedSeed,
                 onAspectRatioSelected = { ratio ->
