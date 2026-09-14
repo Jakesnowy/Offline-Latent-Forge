@@ -2567,7 +2567,11 @@ suspend fun extractNpuModel(
             onProgress(context.getString(R.string.preparing_npu_model))
         }
 
+        // Defensive (audit follow-up): same id sanitization as the URL flow so
+        // both install paths derive identical, traversal-safe directory names.
         val modelId = modelName.replace(" ", "")
+            .filter { it.isLetterOrDigit() || it == '_' || it == '-' }
+            .ifBlank { "model" }
 
         val modelsDir = File(context.filesDir, "models")
         if (!modelsDir.exists()) {
@@ -2690,7 +2694,12 @@ suspend fun installNpuModelFromUrl(
     onSuccess: () -> Unit,
     onError: (String) -> Unit,
 ) = withContext(Dispatchers.IO) {
+    // Defensive (audit follow-up): the model name comes from the dialog and
+    // feeds filesystem paths here; restrict it to a safe id charset so it can
+    // never traverse out of the models/cache directories.
     val modelId = modelName.replace(" ", "")
+        .filter { it.isLetterOrDigit() || it == '_' || it == '-' }
+        .ifBlank { "model" }
     val cacheFile = File(
         context.cacheDir,
         "npu_dl_${modelId}_${System.currentTimeMillis()}",
@@ -2715,7 +2724,16 @@ suspend fun installNpuModelFromUrl(
                 ?.trim(' ', '"', '\'')
                 ?.takeIf { it.isNotBlank() }
             val urlName = url.substringBefore('?').substringAfterLast('/').takeIf { it.isNotBlank() }
-            val fileName = headerName ?: urlName ?: "model.bin"
+            // Defensive (audit follow-up): header/URL-derived names are
+            // attacker-controlled when a link is shared. Reduce to a safe
+            // basename (no separators, no traversal) — the canonical-path
+            // containment check below is the hard gate before any write.
+            val rawFileName = headerName ?: urlName ?: "model.bin"
+            val fileName = rawFileName
+                .substringAfterLast('/')
+                .substringAfterLast('\\')
+                .filter { it.isLetterOrDigit() || it == '.' || it == '_' || it == '-' }
+                .ifBlank { "model.bin" }
 
             withContext(Dispatchers.Main) {
                 onByteProgress(0L, totalBytes, 0f)
@@ -2765,7 +2783,14 @@ suspend fun installNpuModelFromUrl(
                     modelDir.deleteRecursively()
                 }
                 modelDir.mkdirs()
-                cacheFile.copyTo(File(modelDir, fileName), overwrite = true)
+                val targetFile = File(modelDir, fileName)
+                if (!targetFile.canonicalPath.startsWith(
+                        modelDir.canonicalPath + File.separator,
+                    )
+                ) {
+                    throw Exception("Resolved model path escaped the model directory")
+                }
+                cacheFile.copyTo(targetFile, overwrite = true)
                 File(modelDir, "npucustom").createNewFile()
                 withContext(Dispatchers.Main) {
                     onSuccess()
