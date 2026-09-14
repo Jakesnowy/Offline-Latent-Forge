@@ -344,19 +344,25 @@ class DPMSolverMultistepScheduler : public Scheduler {
   }
 
   int index_for_timestep(int timestep) const {
-    std::vector<size_t> indices;
+    size_t first = timesteps_.size();
+    size_t second = timesteps_.size();
+
     for (size_t i = 0; i < timesteps_.size(); ++i) {
       if (int(timesteps_(i)) == timestep) {
-        indices.push_back(i);
+        if (first == timesteps_.size()) {
+          first = i;
+        } else {
+          second = i;
+          break;
+        }
       }
     }
-    if (indices.empty()) {
+
+    if (first == timesteps_.size()) {
       return int(timesteps_.size()) - 1;
-    } else if (indices.size() > 1) {
-      return int(indices[1]);
-    } else {
-      return int(indices[0]);
     }
+
+    return int(second != timesteps_.size() ? second : first);
   }
 
   SchedulerOutput step(const xt::xarray<float> &model_output, int timestep,

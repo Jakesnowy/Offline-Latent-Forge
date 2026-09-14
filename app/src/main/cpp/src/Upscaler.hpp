@@ -104,7 +104,7 @@ inline xt::xarray<uint8_t> upscaleTiled(
 
       tile_count++;
       std::cout << "Processed tile " << tile_count << "/"
-                << (num_tiles_w * num_tiles_h) << std::endl;
+          << (num_tiles_w * num_tiles_h) << '\n';
     }
   }
 
@@ -178,13 +178,13 @@ inline xt::xarray<uint8_t> upscaleWithMnn(
   auto input_tensor = interpreter->getSessionInput(session, nullptr);
   auto output_tensor = interpreter->getSessionOutput(session, nullptr);
 
+  std::vector<int> dims = {1, 3, kTileSize, kTileSize};
+  interpreter->resizeTensor(input_tensor, dims);
+  interpreter->resizeSession(session);
+
   return upscaleTiled(
       input_image, width, height,
       [&](const std::vector<float> &in, std::vector<float> &out) {
-        std::vector<int> dims = {1, 3, kTileSize, kTileSize};
-        interpreter->resizeTensor(input_tensor, dims);
-        interpreter->resizeSession(session);
-
         auto host_tensor = MNN::Tensor::create<float>(
             dims, const_cast<float *>(in.data()), MNN::Tensor::CAFFE);
         input_tensor->copyFromHostTensor(host_tensor);

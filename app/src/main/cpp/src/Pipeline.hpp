@@ -315,7 +315,7 @@ class Pipeline {
   static std::vector<uint8_t> pixelsToBytes(const xt::xarray<float> &pixels) {
     auto img = xt::view(pixels, 0);
     auto transp = xt::transpose(img, {1, 2, 0});
-    xt::xarray<double> scaled = (transp + 1.0) / 2.0 * 255.0;
+    xt::xarray<float> scaled = (transp + 1.0f) / 2.0f * 255.0f;
     auto norm = xt::clip(scaled, 0.0, 255.0);
     xt::xarray<uint8_t> u8_img = xt::cast<uint8_t>(norm);
     return std::vector<uint8_t>(u8_img.begin(), u8_img.end());
@@ -912,7 +912,11 @@ inline GenerationResult Pipeline::generate(
                                      sample_width};
     xt::random::seed(req.seed);
     xt::xarray<float> latents = xt::random::randn<float>(shape);
-    xt::xarray<float> latents_noise = xt::random::randn<float>(shape);
+    xt::xarray<float> latents_noise;
+
+    if (req.img2img) {
+      latents_noise = xt::random::randn<float>(shape);
+    };
 
     // Scale initial latents by init_noise_sigma (required for Euler
     // schedulers).

@@ -562,6 +562,13 @@ class QnnModel : public QnnSampleApp {
       return returnStatus;
     }
 
+    if (graphInfo.numOutputTensors < 2) {
+      QNN_ERROR("Expecting at least 2 output tensors for sdxl vae encoder, got %d",
+                graphInfo.numOutputTensors);
+      returnStatus = StatusCode::FAILURE;
+      return returnStatus;
+    }
+
     // pixel_values (fp32, 1x3xHxW)
     {
       int elementCount = 1 * 3 * output_width * output_height;
@@ -674,8 +681,13 @@ class QnnModel : public QnnSampleApp {
   static size_t tensorElems(const Qnn_Tensor_t &t) {
     uint32_t rank = QNN_TENSOR_GET_RANK(t);
     uint32_t *dims = QNN_TENSOR_GET_DIMENSIONS(t);
+    
+    if (rank > 0 && dims == nullptr) {
+      return 0;
+    }
+
     size_t n = 1;
-    for (uint32_t i = 0; i < rank; ++i) n *= (dims ? dims[i] : 1);
+    for (uint32_t i = 0; i < rank; ++i) n *= dims[i];
     return n;
   }
 
@@ -695,7 +707,27 @@ class QnnModel : public QnnSampleApp {
       QNN_ERROR("anima: missing input tensor '%s'", name);
       return false;
     }
-    memcpy(QNN_TENSOR_GET_CLIENT_BUF(*t).data, src, elems * sizeof(float));
+
+    if (src == nullptr) {
+      QNN_ERROR("anima: null source for input tensor '%s'", name);
+      return false;
+    }
+
+    const size_t capacity = tensorElems(*t);
+    if (capacity < elems) {
+      QNN_ERROR(
+          "anima: input tensor '%s' is too small (%zu < %zu elements)",
+          name, capacity, elems);
+      return false;
+    }
+
+    auto clientBuf = QNN_TENSOR_GET_CLIENT_BUF(*t);
+    if (clientBuf.data == nullptr) {
+      QNN_ERROR("anima: input tensor '%s' has no client buffer", name);
+      return false;
+    }
+
+    memcpy(clientBuf.data, src, elems * sizeof(float));
     return true;
   }
 
@@ -878,8 +910,24 @@ class QnnModel : public QnnSampleApp {
       QNN_ERROR("anima clip: missing input 't5_ids'");
       return StatusCode::FAILURE;
     }
-    memcpy(QNN_TENSOR_GET_CLIENT_BUF(*ti).data, t5_ids,
-           (size_t)TS * sizeof(int32_t));
+
+    if (t5_ids == nullptr) {
+      QNN_ERROR("anima clip: null t5_ids input");
+      return StatusCode::FAILURE;
+    }
+
+    if (tensorElems(*ti) < static_cast<size_t>(TS)) {
+      QNN_ERROR("anima clip: t5_ids tensor too small");
+      return StatusCode::FAILURE;
+    }
+
+    auto tiBuf = QNN_TENSOR_GET_CLIENT_BUF(*ti);
+    if (tiBuf.data == nullptr) {
+      QNN_ERROR("anima clip: t5_ids has no client buffer");
+      return StatusCode::FAILURE;
+    }
+
+    memcpy(tiBuf.data, t5_ids, (size_t)TS * sizeof(int32_t));
 
     if (!runGraph(graphInfo, "anima clip")) return StatusCode::FAILURE;
 
@@ -1027,19 +1075,23 @@ class QnnModel : public QnnSampleApp {
     }
 
     if (StatusCode::SUCCESS == returnStatus &&
-        m_qnnFunctionPointers.qnnInterface.contextCreateFromBinary(
-            m_backendHandle, m_deviceHandle,
-            (const QnnContext_Config_t **)m_contextConfig, nonConstBuffer,
-            bufferSize, &m_context, m_profileBackendHandle)) {
-      QNN_ERROR("Could not create context from binary.");
-      returnStatus = StatusCode::FAILURE;
-    }
+         m_qnnFunctionPointers.qnnInterface.contextCreateFromBinary(
+             m_backendHandle, m_deviceHandle,
+             (const QnnContext_Config_t **)m_contextConfig, nonConstBuffer,
+             bufferSize, &m_context, m_profileBackendHandle)) {
+       QNN_ERROR("Could not create context from binary.");
+       returnStatus = StatusCode::FAILURE;
+     }
 
-    if (ProfilingLevel::OFF != m_profilingLevel) {
-      extractBackendProfilingInfo(m_profileBackendHandle);
-    }
+     if (ProfilingLevel::OFF != m_profilingLevel) {
+       extractBackendProfilingInfo(m_profileBackendHandle);
+     }
 
-    m_isContextCreated = true;
+    if (StatusCode::SUCCESS == returnStatus) {
+      m_isContextCreated = true;
+    } else {
+      m_isContextCreated = false;
+    }
 
     if (StatusCode::SUCCESS == returnStatus) {
       for (size_t graphIdx = 0; graphIdx < m_graphsCount; graphIdx++) {
