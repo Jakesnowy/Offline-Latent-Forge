@@ -34,6 +34,11 @@ struct GenerationResult {
   int first_step_time_ms;
   // NSFW classifier score; negative when no safety checker ran (basic build).
   float nsfw_score = -1.0f;
+  // Schedule steps actually executed: the exit step for a stepping early
+  // exit, the full schedule length for a natural completion. The app records
+  // this in history (with "~" when below the schedule) and reproduces from
+  // the schedule length.
+  int completed_steps = 0;
 };
 
 inline std::string base64_encode(const std::string &in) {

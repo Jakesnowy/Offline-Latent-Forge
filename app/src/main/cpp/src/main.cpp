@@ -599,6 +599,10 @@ static void registerGenerateEndpoint(httplib::Server &svr, Pipeline *pipeline,
                   sink.write(ev.c_str(), ev.size());
                 };
               }
+              // Drop any decision left over from a previous run (e.g. a
+              // cancel racing the app's auto-finish countdown) so it can
+              // never resolve this run's first pause instantly.
+              g_pause_decision.store(-1);
 
               auto result = pipeline->generate(
                   *req, [&sink, &req](int s, int t, const std::string &img) {
@@ -646,6 +650,7 @@ static void registerGenerateEndpoint(httplib::Server &svr, Pipeline *pipeline,
                   {"width", result.width},
                   {"height", result.height},
                   {"channels", result.channels},
+                  {"steps", result.completed_steps},
                   {"generation_time_ms", result.generation_time_ms},
                   {"first_step_time_ms", result.first_step_time_ms}};
               // NSFW score is only ever computed in the with_filter build

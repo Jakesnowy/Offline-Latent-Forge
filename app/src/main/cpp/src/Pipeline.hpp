@@ -1375,6 +1375,11 @@ inline GenerationResult Pipeline::generate(
 
     endDenoise();
 
+    // Steps actually executed: the exit step for a stepping early exit,
+    // the schedule length for a natural completion. Captured before the
+    // post-decode progress tick below inflates current_step.
+    const int completed_steps = current_step;
+
     // --- VAE Decode ---
     auto vae_dec_start = std::chrono::high_resolution_clock::now();
 
@@ -1478,7 +1483,8 @@ inline GenerationResult Pipeline::generate(
                             3,
                             static_cast<int>(total_time),
                             first_step_time_ms,
-                            nsfw_score};
+                            nsfw_score,
+                            completed_steps};
   } catch (const std::exception &e) {
     QNN_ERROR("Image generation error: %s", e.what());
     throw;
