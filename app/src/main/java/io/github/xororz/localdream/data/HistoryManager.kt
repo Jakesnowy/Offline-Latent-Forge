@@ -58,6 +58,7 @@ data class HistoryItem(
                     scheduler = e.scheduler,
                     mode = mode,
                     nsfwScore = e.nsfwScore,
+                    scheduleSteps = e.scheduleSteps,
                 ),
             )
         }
@@ -132,6 +133,7 @@ class HistoryManager(private val context: Context) {
                 runOnCpu = params.runOnCpu,
                 useOpenCL = params.useOpenCL,
                 nsfwScore = params.nsfwScore,
+                scheduleSteps = params.scheduleSteps,
             )
             val id = dao.insert(entity)
             HistoryItem.fromEntity(filesDir, entity.copy(id = id))

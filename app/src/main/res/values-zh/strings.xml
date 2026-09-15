@@ -37,6 +37,7 @@
     <string name="gen_mode_standard">标准</string>
     <string name="gen_mode_stepping">步进</string>
     <string name="gen_mode_sweep">扫掠</string>
+    <string name="steps_reserve">步数: %1$d (+%2$d 储备)</string>
     <string name="stepping_continue">继续</string>
     <string name="stepping_finish">完成</string>
     <string name="stepping_cancel">取消</string>
@@ -212,7 +213,7 @@
     <string name="params_detail">生成参数详情</string>
     <string name="basic_params">基础参数</string>
     <string name="basic_model">模型: %s</string>
-    <string name="basic_step">步数: %d</string>
+    <string name="basic_step">步数: %1$s</string>
     <string name="basic_size">尺寸: %1$dx%2$d</string>
     <string name="basic_seed">种子: %s</string>
     <string name="basic_runtime">运行: %s</string>

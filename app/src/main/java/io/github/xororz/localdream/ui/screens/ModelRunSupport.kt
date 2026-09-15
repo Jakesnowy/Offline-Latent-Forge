@@ -547,4 +547,8 @@ data class GenerationParameters(
     val mode: GenerationMode = GenerationMode.UNKNOWN,
     // NSFW classifier score from the with_filter build; null otherwise.
     val nsfwScore: Float? = null,
+    // Full schedule length when this run ended before consuming the whole
+    // schedule (stepping early exit, sweep checkpoint); null otherwise.
+    // Drives the "~" steps display and reproduce-at-full-quality.
+    val scheduleSteps: Int? = null,
 )

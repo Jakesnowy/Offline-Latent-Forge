@@ -39,6 +39,7 @@
     <string name="gen_mode_standard">Standard</string>
     <string name="gen_mode_stepping">Stepping</string>
     <string name="gen_mode_sweep">Sweep</string>
+    <string name="steps_reserve">Steps: %1$d (+%2$d reserve)</string>
     <string name="stepping_continue">Continue</string>
     <string name="stepping_finish">Finish</string>
     <string name="stepping_cancel">Cancel</string>
@@ -222,7 +223,7 @@
     <string name="params_detail">Details</string>
     <string name="basic_params">Basic</string>
     <string name="basic_model">Model: %s</string>
-    <string name="basic_step">Steps: %d</string>
+    <string name="basic_step">Steps: %1$s</string>
     <string name="basic_size">Size: %1$dx%2$d</string>
     <string name="basic_seed">Seed: %s</string>
     <string name="basic_runtime">Runtime: %s</string>

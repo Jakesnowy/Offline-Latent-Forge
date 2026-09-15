@@ -90,7 +90,13 @@ internal fun RunGenerationEffects(
                     }
 
                     val newParams = GenerationParameters(
-                        steps = setupState.generationParamsTmp.steps,
+                        // The engine reports the steps it actually executed —
+                        // the exit step for a stepping early exit (also a
+                        // sweep checkpoint), the schedule length for a
+                        // natural completion. Falls back to the plan for
+                        // older engines.
+                        steps = state.steps.takeIf { it > 0 }
+                            ?: setupState.generationParamsTmp.steps,
                         cfg = setupState.generationParamsTmp.cfg,
                         seed = runState.returnedSeed,
                         prompt = setupState.generationParamsTmp.prompt,
@@ -104,6 +110,7 @@ internal fun RunGenerationEffects(
                         scheduler = setupState.generationParamsTmp.scheduler,
                         mode = currentGenerationMode,
                         nsfwScore = state.nsfwScore,
+                        scheduleSteps = setupState.generationParamsTmp.scheduleSteps,
                     )
 
                     // Save to disk and update history list. The saved item's id is
@@ -117,7 +124,7 @@ internal fun RunGenerationEffects(
                             state.sweepImages.forEach {
                                 add(it.bitmap to it.steps)
                             }
-                            add(state.bitmap to setupState.generationParamsTmp.steps)
+                            add(state.bitmap to newParams.steps)
                         }
                         var lastSaved: HistoryItem? = null
                         for ((bitmap, steps) in toSave) {

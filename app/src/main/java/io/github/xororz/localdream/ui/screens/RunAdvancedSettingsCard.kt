@@ -259,18 +259,27 @@ internal fun RunAdvancedSettingsCard(
             ) {
                 Column {
                     Text(
-                        text = if (activeMode == "sweep") {
-                            // Sweep: show the checkpoint step counts the
-                            // interval produces (target, +interval, +2*interval).
-                            val t = steps.roundToInt()
-                            stringResource(
-                                R.string.steps_range,
-                                "$t",
-                                "${t + sweepInterval}",
-                                "${t + 2 * sweepInterval}",
-                            )
-                        } else {
-                            stringResource(R.string.steps, steps.roundToInt())
+                        text = when (activeMode) {
+                            "sweep" -> {
+                                // Sweep: show the checkpoint step counts the
+                                // interval produces (target, +interval, +2*interval).
+                                val t = steps.roundToInt()
+                                stringResource(
+                                    R.string.steps_range,
+                                    "$t",
+                                    "${t + sweepInterval}",
+                                    "${t + 2 * sweepInterval}",
+                                )
+                            }
+                            "stepping" -> {
+                                // Stepping: the schedule quietly extends by a
+                                // proportional reserve (see startGeneration);
+                                // the user exits early or rides it to the end.
+                                val t = steps.roundToInt()
+                                val reserve = (t / 4.0).roundToInt().coerceIn(2, 10)
+                                stringResource(R.string.steps_reserve, t, reserve)
+                            }
+                            else -> stringResource(R.string.steps, steps.roundToInt())
                         },
                         style = MaterialTheme.typography.bodyMedium,
                     )

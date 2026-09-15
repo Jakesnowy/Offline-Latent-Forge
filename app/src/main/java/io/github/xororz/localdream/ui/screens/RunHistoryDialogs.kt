@@ -293,7 +293,16 @@ internal fun RunHistoryDialogs(
                         ultrafixState.ultrafixDenoiseSteps =
                             ultrafixState.ultrafixDenoiseSteps.coerceIn(0, maxDenoiseSteps)
                     } else {
-                        runState.steps = params.steps.toFloat()
+                        // Reproduce at the FULL schedule length when the entry
+                        // was an early exit (stepping/sweep): same seed on the
+                        // complete schedule shares the exact trajectory the
+                        // user approved and carries it to maximum quality.
+                        runState.steps = (
+                            params.scheduleSteps ?: params.steps
+                            ).toFloat().coerceIn(
+                            GenerationDefaults.STEPS_RANGE_MIN,
+                            GenerationDefaults.STEPS_RANGE_MAX,
+                        )
                     }
                 }
                 if (ParamShareField.CFG in selectedFields) {

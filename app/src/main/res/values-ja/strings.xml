@@ -37,6 +37,7 @@
     <string name="gen_mode_standard">スタンダード</string>
     <string name="gen_mode_stepping">ステッピング</string>
     <string name="gen_mode_sweep">スイープ</string>
+    <string name="steps_reserve">ステップ数: %1$d (+%2$d 予備)</string>
     <string name="stepping_continue">続行</string>
     <string name="stepping_finish">完了</string>
     <string name="stepping_cancel">キャンセル</string>
@@ -212,7 +213,7 @@
     <string name="params_detail">パラメータの詳細</string>
     <string name="basic_params">基本パラメータ</string>
     <string name="basic_model">モデル: %s</string>
-    <string name="basic_step">ステップ数: %d</string>
+    <string name="basic_step">ステップ数: %1$s</string>
     <string name="basic_size">サイズ: %1$dx%2$d</string>
     <string name="basic_seed">シード: %s</string>
     <string name="basic_runtime">ランタイム: %s</string>

@@ -79,7 +79,19 @@ fun GenerationParamsDialog(
                         style = MaterialTheme.typography.bodyMedium,
                     )
                     Text(
-                        stringResource(R.string.basic_step, params.steps),
+                        stringResource(
+                            R.string.basic_step,
+                            // "~" marks a run that exited before consuming
+                            // its whole schedule (stepping early exit, sweep
+                            // checkpoint).
+                            if (params.scheduleSteps != null &&
+                                params.steps < params.scheduleSteps
+                            ) {
+                                "~${params.steps}"
+                            } else {
+                                "${params.steps}"
+                            },
+                        ),
                         style = MaterialTheme.typography.bodyMedium,
                     )
                     Text(

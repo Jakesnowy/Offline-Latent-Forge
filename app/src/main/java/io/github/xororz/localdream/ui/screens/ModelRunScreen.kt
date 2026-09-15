@@ -1594,6 +1594,7 @@ fun ModelRunScreen(
                     denoiseStrength = runState.denoiseStrength,
                     useOpenCL = runState.useOpenCL,
                     scheduler = runState.scheduler,
+                    scheduleSteps = if (generationMode != "standard") runSteps else null,
                 )
 
                 val batchIntent = Intent(

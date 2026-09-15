@@ -45,4 +45,8 @@ data class HistoryEntity(
     // process or a failed check). Reported in both builds; masking above the
     // threshold happens only in the filter build.
     val nsfwScore: Float? = null,
+
+    // Full schedule length when the run ended before consuming the whole
+    // schedule (stepping early exit, sweep checkpoint); null otherwise.
+    val scheduleSteps: Int? = null,
 )

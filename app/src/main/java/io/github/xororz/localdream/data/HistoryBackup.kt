@@ -212,6 +212,7 @@ object HistoryBackup {
         e.denoiseStrength?.let { put("denoiseStrength", it.toDouble()) }
         e.upscalerId?.let { put("upscalerId", it) }
         put("steps", e.steps)
+        e.scheduleSteps?.let { put("scheduleSteps", it) }
         put("cfg", e.cfg.toDouble())
         e.seed?.let { put("seed", it) }
         put("prompt", e.prompt)
@@ -243,6 +244,11 @@ object HistoryBackup {
             },
             upscalerId = json.optString("upscalerId").ifEmpty { null },
             steps = json.optInt("steps", 20),
+            scheduleSteps = if (json.has("scheduleSteps") && !json.isNull("scheduleSteps")) {
+                json.optInt("scheduleSteps")
+            } else {
+                null
+            },
             cfg = json.optDouble("cfg", 7.0).toFloat(),
             seed = if (json.has("seed")) json.optLong("seed") else null,
             prompt = json.optString("prompt", ""),

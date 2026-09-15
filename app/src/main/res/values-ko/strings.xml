@@ -37,6 +37,7 @@
     <string name="gen_mode_standard">표준</string>
     <string name="gen_mode_stepping">스테핑</string>
     <string name="gen_mode_sweep">스윕</string>
+    <string name="steps_reserve">스텝: %1$d (+%2$d 예비)</string>
     <string name="stepping_continue">계속</string>
     <string name="stepping_finish">완료</string>
     <string name="stepping_cancel">취소</string>
@@ -212,7 +213,7 @@
     <string name="params_detail">세부 정보</string>
     <string name="basic_params">기본</string>
     <string name="basic_model">모델: %s</string>
-    <string name="basic_step">스텝: %d</string>
+    <string name="basic_step">스텝: %1$s</string>
     <string name="basic_size">크기: %1$dx%2$d</string>
     <string name="basic_seed">시드: %s</string>
     <string name="basic_runtime">실행 환경: %s</string>
