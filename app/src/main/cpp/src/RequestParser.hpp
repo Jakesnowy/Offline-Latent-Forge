@@ -49,14 +49,20 @@ inline GenerationRequest parseGenerationRequest(const nlohmann::json &json,
   req.sweep_interval = json.value("sweep_interval", 0);
   if (req.sweep_target < 0 || req.sweep_interval < 0)
     throw std::invalid_argument("Invalid sweep_target/sweep_interval (>= 0)");
+  // Stepping: the completed-step count at which pausing starts (the
+  // user-visible step target); the schedule itself runs longer.
+  req.pause_at = json.value("pause_at", 0);
+  if (req.pause_at < 0) throw std::invalid_argument("Invalid pause_at (>= 0)");
   // --- Consolidated request limits ---------------------------------------
   // These mirror the app's own UI ranges (GenerationDefaults.kt on the
   // Kotlin side). The engine is authoritative: out-of-range values are
   // rejected (not clamped) so an app/engine desync is observable, and so
   // unauthenticated local clients can neither drive unbounded allocations
   // nor crash the process. Keep in sync with GenerationDefaults.
-  if (req.steps < 1 || req.steps > 50)
-    throw std::invalid_argument("Invalid steps (1-50)");
+  // Upper bound raised above the UI's 50-step max: stepping mode wires the
+  // full schedule (user steps + up to 10 reserve steps) in this field.
+  if (req.steps < 1 || req.steps > 60)
+    throw std::invalid_argument("Invalid steps (1-60)");
   // Comparison form also rejects NaN.
   if (!(req.cfg >= 0.0f && req.cfg <= 30.0f))
     throw std::invalid_argument("Invalid cfg (0-30)");

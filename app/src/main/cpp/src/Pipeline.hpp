@@ -57,6 +57,11 @@ struct GenerationRequest {
   bool light_previews = false;
   // Generation mode: "standard" | "stepping" | "sweep".
   std::string generation_mode = "standard";
+  // Stepping: the completed-step count at which the engine starts pausing
+  // for the app's decision. The schedule (`steps`) runs past it to
+  // pause_at + the app-side reserve, so every continued step is a real
+  // schedule step. 0 pauses after every step; >= steps disables pausing.
+  int pause_at = 0;
   // Sweep: the target step (first checkpoint) and the step interval between
   // checkpoint decodes; the schedule runs to `steps` (>= target+2*interval).
   int sweep_target = 0;
@@ -1145,8 +1150,10 @@ inline GenerationResult Pipeline::generate(
 
     int i = start_step;
     while (i < (int)timesteps.size()) {
-      // Pre-step preview: skipped in stepping mode (the post-step pause
-      // renders the fresh state); light previews serve sweep mode.
+      // Pre-step preview: skipped in stepping mode (the pause after its
+      // step renders the fresh state); light previews serve sweep mode.
+      // Stepping still gets silent progress events (no image) so the app's
+      // progress bar advances through the pre-pause run.
       if (!stepping) {
         if (req.light_previews ||
             (req.show_diffusion_process && previewSupported() &&
@@ -1158,6 +1165,8 @@ inline GenerationResult Pipeline::generate(
         } else {
           progress_callback(current_step, total_run_steps, "");
         }
+      } else {
+        progress_callback(current_step, total_run_steps, "");
       }
 
       auto step_start_time = std::chrono::high_resolution_clock::now();
@@ -1337,9 +1346,15 @@ inline GenerationResult Pipeline::generate(
         }
       }
 
-      // Stepping pause: emit the fresh light preview and block for the
-      // user's decision (0 = advance, 1 = confirm & finalize, 2 = abort).
-      if (stepping) {
+      // Stepping pause: from `pause_at` (the user-visible step count)
+      // onward the engine pauses after every step — emits the fresh light
+      // preview and blocks for the user's decision (0 = continue,
+      // 1 = confirm & finalize early, 2 = abort). The schedule itself runs
+      // to `steps` (pause_at + the app-side reserve), so every continued
+      // step is a real schedule step and strictly refines the estimate;
+      // there is deliberately no past-the-end refinement (re-noising a
+      // near-clean latent only degrades it).
+      if (stepping && current_step >= req.pause_at) {
         progress_callback(current_step, total_run_steps,
                           renderLightPreview(req, latents));
         int decision = req.pause_handler(current_step);
@@ -1348,22 +1363,11 @@ inline GenerationResult Pipeline::generate(
         }
         if (decision == 1) {
           // Confirm: the model's x0 estimate is the final image (exact at
-          // the last step; the best single-step estimate mid-run).
+          // the schedule end; the best single-step estimate mid-reserve).
           latents = step_output.pred_original_sample;
           break;
         }
-        // Advance: if the schedule is exhausted (sigma reached 0), re-noise
-        // the clean latents to the last schedule sigma and re-denoise one
-        // step — a refinement pass that lets stepping continue past the
-        // target step count.
-        if (i + 1 >= (int)timesteps.size()) {
-          xt::xarray<int> t_last = {(int)timesteps((int)timesteps.size() - 1)};
-          xt::xarray<float> eps =
-              xt::random::randn<float>(latents.shape());
-          latents = scheduler->add_noise(latents, eps, t_last);
-          scheduler->set_begin_index((int)timesteps.size() - 1);
-          i = (int)timesteps.size() - 2;
-        }
+        // Continue: fall through to the next schedule step.
       }
 
       i++;
