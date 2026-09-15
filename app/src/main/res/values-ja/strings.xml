@@ -37,13 +37,11 @@
     <string name="gen_mode_standard">スタンダード</string>
     <string name="gen_mode_stepping">ステッピング</string>
     <string name="gen_mode_sweep">スイープ</string>
-    <string name="stepping_dialog_title">ステッピング結果</string>
-    <string name="stepping_keep">保持</string>
-    <string name="stepping_one_more">もう1ステップ</string>
-    <string name="stepping_discard">破棄</string>
-    <string name="stepping_next">+1 ステップ</string>
+    <string name="stepping_continue">続行</string>
     <string name="stepping_finish">完了</string>
     <string name="stepping_cancel">キャンセル</string>
+    <string name="stepping_step_position">ステップ %1$d/%2$d</string>
+    <string name="stepping_auto_finish">自動的に完了しています…</string>
     <string name="sweep_interval">間隔: %d</string>
     <string name="steps_range">ステップ数: %s</string>
     <string name="sdxl_lowram">SDXL 低メモリモード</string>

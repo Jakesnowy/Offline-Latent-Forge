@@ -47,6 +47,12 @@ import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
@@ -61,6 +67,7 @@ import io.github.xororz.localdream.ui.components.SmoothLinearWavyProgressIndicat
 import io.github.xororz.localdream.data.GenerationMode
 import io.github.xororz.localdream.data.Model
 import io.github.xororz.localdream.utils.ParamShare
+import kotlin.math.roundToInt
 
 /**
  * The prompt page of [ModelRunScreen]: the settings card (img2img picker,
@@ -424,35 +431,70 @@ internal fun RunPromptPage(
                                 )
                             }
                         }
-                        if (runState.paused) {
-                            // Stepping mode: the in-card decision controls —
-                            // finish (full-quality decode of the model's x0
-                            // estimate), one more step, or cancel.
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = 8.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                Button(
-                                    onClick = { onSteppingDecision("confirm") },
-                                    enabled = runState.paused,
-                                    modifier = Modifier.weight(1f),
+                        if (runState.paused && runState.steppingScheduleSteps > 0) {
+                            // Stepping mode: the engine pauses after every
+                            // step from the user's count onward (the reserve
+                            // plan — see startGeneration). The schedule runs a
+                            // few steps past the user's count, so every
+                            // continued step is a real schedule step that
+                            // strictly refines the estimate; there is no
+                            // past-the-end degradation path.
+                            val schedule = runState.steppingScheduleSteps
+                            val pauseAt = runState.steppingPauseAt
+                            val currentStep =
+                                (runState.progress * schedule).roundToInt()
+                            val reserveTotal = schedule - pauseAt
+                            val reserveDone =
+                                (currentStep - pauseAt).coerceIn(0, reserveTotal)
+                            val atScheduleEnd = currentStep >= schedule
+
+                            // Reserve bar: subtle tracker under the preview
+                            // showing the position through the extra steps.
+                            SmoothLinearWavyProgressIndicator(
+                                progress = if (reserveTotal > 0) {
+                                    reserveDone.toFloat() / reserveTotal
+                                } else {
+                                    1f
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            Text(
+                                stringResource(
+                                    R.string.stepping_step_position,
+                                    currentStep,
+                                    schedule,
+                                ),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            if (atScheduleEnd) {
+                                // Schedule end: Continue disappears — Finish
+                                // with a short auto-confirm countdown.
+                                SteppingAutoFinish(onSteppingDecision)
+                            } else {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 8.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 ) {
-                                    Text(stringResource(R.string.stepping_finish))
-                                }
-                                OutlinedButton(
-                                    onClick = { onSteppingDecision("next") },
-                                    enabled = runState.paused,
-                                    modifier = Modifier.weight(1f),
-                                ) {
-                                    Text(stringResource(R.string.stepping_next))
-                                }
-                                OutlinedButton(
-                                    onClick = { onSteppingDecision("abort") },
-                                    enabled = runState.paused,
-                                ) {
-                                    Text(stringResource(R.string.stepping_cancel))
+                                    Button(
+                                        onClick = { onSteppingDecision("confirm") },
+                                        modifier = Modifier.weight(1f),
+                                    ) {
+                                        Text(stringResource(R.string.stepping_finish))
+                                    }
+                                    OutlinedButton(
+                                        onClick = { onSteppingDecision("next") },
+                                        modifier = Modifier.weight(1f),
+                                    ) {
+                                        Text(stringResource(R.string.stepping_continue))
+                                    }
+                                    OutlinedButton(
+                                        onClick = { onSteppingDecision("abort") },
+                                    ) {
+                                        Text(stringResource(R.string.stepping_cancel))
+                                    }
                                 }
                             }
                         }
@@ -652,5 +694,36 @@ private fun PromptCountLabel(label: String, count: Int, max: Int, showCount: Boo
             Spacer(Modifier.width(6.dp))
             Text("$count/$max")
         }
+    }
+}
+
+/**
+ * Stepping mode, schedule end: Finish plus a ~2 second countdown that
+ * auto-confirms the final pause, so reaching the schedule end flows straight
+ * to the results unless the user taps Finish (same outcome) or Cancel.
+ */
+@Composable
+private fun SteppingAutoFinish(onSteppingDecision: (String) -> Unit) {
+    var countdown by remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(Unit) {
+        val durationNanos = 2_000_000_000f
+        var last = withFrameNanos { it }
+        while (countdown < 1f) {
+            val now = withFrameNanos { it }
+            countdown = (countdown + (now - last) / durationNanos).coerceIn(0f, 1f)
+            last = now
+        }
+        onSteppingDecision("confirm")
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            stringResource(R.string.stepping_auto_finish),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        SmoothLinearWavyProgressIndicator(
+            progress = countdown,
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }

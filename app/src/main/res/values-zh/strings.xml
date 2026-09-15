@@ -37,13 +37,11 @@
     <string name="gen_mode_standard">标准</string>
     <string name="gen_mode_stepping">步进</string>
     <string name="gen_mode_sweep">扫掠</string>
-    <string name="stepping_dialog_title">步进结果</string>
-    <string name="stepping_keep">保留</string>
-    <string name="stepping_one_more">再走一步</string>
-    <string name="stepping_discard">丢弃</string>
-    <string name="stepping_next">+1 步</string>
+    <string name="stepping_continue">继续</string>
     <string name="stepping_finish">完成</string>
     <string name="stepping_cancel">取消</string>
+    <string name="stepping_step_position">步数 %1$d/%2$d</string>
+    <string name="stepping_auto_finish">正在自动完成…</string>
     <string name="sweep_interval">间隔: %d</string>
     <string name="steps_range">步数: %s</string>
     <string name="sdxl_lowram">SDXL 低内存模式</string>

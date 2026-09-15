@@ -1541,15 +1541,24 @@ fun ModelRunScreen(
         // sweep = ONE run whose schedule extends to target + 2*interval steps,
         // with full-quality checkpoint decodes at target, target+interval and
         // the schedule end (a step-range comparison along one seed — see
-        // Pipeline's sweep checkpoints). Stepping = a single run with per-step
-        // light previews and a pause after every step.
+        // Pipeline's sweep checkpoints). Stepping = a single run whose
+        // schedule secretly extends past the user's step count by a reserve
+        // of extra steps; the engine pauses at the user's count (and after
+        // each reserve step) so the user can finish early or continue
+        // through real schedule steps that strictly refine the estimate.
+        val userSteps = runState.steps.roundToInt()
+        // Reserve size: proportional with a cap — a 4-step DMD2 run gets
+        // +2, a 50-step run gets +10.
+        val steppingReserve = (userSteps / 4.0).roundToInt().coerceIn(2, 10)
         val runSteps: Int = when (generationMode) {
-            "sweep" -> {
-                val target = runState.steps.roundToInt()
-                target + 2 * sweepIntervalPref
-            }
-            else -> runState.steps.roundToInt()
+            "sweep" -> userSteps + 2 * sweepIntervalPref
+            "stepping" -> userSteps + steppingReserve
+            else -> userSteps
         }
+        val pauseAtValue = if (generationMode == "stepping") userSteps else 0
+        runState.steppingPauseAt = pauseAtValue
+        runState.steppingScheduleSteps =
+            if (generationMode == "stepping") runSteps else 0
         val sweepTargetValue = if (generationMode == "sweep") {
             runState.steps.roundToInt()
         } else {
@@ -1603,6 +1612,9 @@ fun ModelRunScreen(
                     if (generationMode == "sweep") {
                         putExtra("sweep_target", sweepTargetValue)
                         putExtra("sweep_interval", sweepIntervalPref)
+                    }
+                    if (generationMode == "stepping") {
+                        putExtra("pause_at", pauseAtValue)
                     }
                     if (generationMode != "standard") {
                         putExtra("generation_mode", generationMode)

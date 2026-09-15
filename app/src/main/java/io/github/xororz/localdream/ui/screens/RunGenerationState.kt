@@ -35,8 +35,14 @@ class RunGenerationState {
     var isRunning by mutableStateOf(false)
     var progress by mutableFloatStateOf(0f)
     // Stepping mode: true while the run is paused after a step, waiting for
-    // the in-card next / finish / cancel decision.
+    // the in-card continue / finish / cancel decision.
     var paused by mutableStateOf(false)
+    // Stepping reserve plan: the engine pauses from pauseAt onward and the
+    // schedule runs to scheduleSteps (pauseAt + reserve — see startGeneration).
+    // 0 = not a stepping run. Drives the reserve bar, the step-position
+    // caption and the auto-finish countdown at the schedule end.
+    var steppingPauseAt by mutableIntStateOf(0)
+    var steppingScheduleSteps by mutableIntStateOf(0)
     var errorMessage by mutableStateOf<String?>(null)
     var isCheckingBackend by mutableStateOf(true)
 

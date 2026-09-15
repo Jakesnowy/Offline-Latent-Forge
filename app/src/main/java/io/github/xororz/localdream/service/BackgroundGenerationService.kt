@@ -117,6 +117,10 @@ class BackgroundGenerationService : Service() {
             // Sweep mode: the checkpoint images decoded before the final one
             // (their step counts differ from the final image's).
             val sweepImages: List<SweepImage> = emptyList(),
+            // Schedule steps the engine actually executed: the exit step for
+            // a stepping early exit (also a sweep checkpoint), the schedule
+            // length for a natural completion. History records this.
+            val steps: Int = 0,
         ) : GenerationState()
         data class Error(val message: String) : GenerationState()
     }
@@ -126,6 +130,10 @@ class BackgroundGenerationService : Service() {
     // 3-image sweep).
     var sweepTarget = 0
     var sweepInterval = 0
+
+    // Stepping: the completed-step count at which the engine starts pausing
+    // (the user's visible step count; the schedule runs longer).
+    var pauseAt = 0
 
     // Checkpoint images decoded so far in the active sweep run.
     val sweepImages = mutableListOf<GenerationState.SweepImage>()
@@ -192,6 +200,7 @@ class BackgroundGenerationService : Service() {
         val generationMode = intent.getStringExtra("generation_mode") ?: "standard"
         sweepTarget = intent.getIntExtra("sweep_target", 0)
         sweepInterval = intent.getIntExtra("sweep_interval", 0)
+        pauseAt = intent.getIntExtra("pause_at", 0)
         sweepImages.clear()
         // Backend to talk to: the local backend by default, or a remote host's
         // generation port when running in connected-device mode.
@@ -346,6 +355,9 @@ class BackgroundGenerationService : Service() {
                 if (generationMode == "sweep") {
                     put("sweep_target", sweepTarget)
                     put("sweep_interval", sweepInterval)
+                }
+                if (generationMode == "stepping") {
+                    put("pause_at", pauseAt)
                 }
                 if (ultrafix) {
                     put("ultrafix", true)
@@ -576,6 +588,7 @@ class BackgroundGenerationService : Service() {
                                             returnedSeed,
                                             nsfwScore,
                                             sweepImages.toList(),
+                                            message.optInt("steps", 0),
                                         ),
                                     )
                                     sweepImages.clear()

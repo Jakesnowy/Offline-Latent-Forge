@@ -37,13 +37,11 @@
     <string name="gen_mode_standard">표준</string>
     <string name="gen_mode_stepping">스테핑</string>
     <string name="gen_mode_sweep">스윕</string>
-    <string name="stepping_dialog_title">스테핑 결과</string>
-    <string name="stepping_keep">유지</string>
-    <string name="stepping_one_more">한 스텝 더</string>
-    <string name="stepping_discard">버리기</string>
-    <string name="stepping_next">+1 스텝</string>
+    <string name="stepping_continue">계속</string>
     <string name="stepping_finish">완료</string>
     <string name="stepping_cancel">취소</string>
+    <string name="stepping_step_position">스텝 %1$d/%2$d</string>
+    <string name="stepping_auto_finish">자동으로 마무리하는 중…</string>
     <string name="sweep_interval">간격: %d</string>
     <string name="steps_range">스텝 수: %s</string>
     <string name="sdxl_lowram">SDXL 저메모리 모드</string>
