@@ -603,7 +603,16 @@ static void registerGenerateEndpoint(httplib::Server &svr, Pipeline *pipeline,
               auto result = pipeline->generate(
                   *req, [&sink, &req](int s, int t, const std::string &img) {
                     nlohmann::json p = {
-                        {"type", "progress"}, {"step", s}, {"total_steps", t}};
+                        {"type", "progress"}, {"step", s},
+                        {"total_steps", t}};
+                    // Stepping mode pauses right after every emitted preview
+                    // (Pipeline skips pre-step previews there), so each
+                    // progress event doubles as the pause notification — the
+                    // app shows its next / finish / cancel controls on this
+                    // flag and POSTs the decision to /generation/control.
+                    if (req->generation_mode == "stepping") {
+                      p["paused"] = true;
+                    }
                     if (!img.empty()) {
                       p["image"] = img;
                       p["format"] = req->preview_format;
