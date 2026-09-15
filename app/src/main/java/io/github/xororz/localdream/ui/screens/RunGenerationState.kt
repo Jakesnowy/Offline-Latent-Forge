@@ -34,6 +34,9 @@ class RunGenerationState {
     var returnedSeed by mutableStateOf<Long?>(null)
     var isRunning by mutableStateOf(false)
     var progress by mutableFloatStateOf(0f)
+    // Stepping mode: true while the run is paused after a step, waiting for
+    // the in-card next / finish / cancel decision.
+    var paused by mutableStateOf(false)
     var errorMessage by mutableStateOf<String?>(null)
     var isCheckingBackend by mutableStateOf(true)
 

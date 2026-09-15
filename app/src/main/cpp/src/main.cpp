@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -422,6 +423,11 @@ static std::string encodeResultImage(const GenerationResult &result,
 // new request arriving while an aborted one is still winding down).
 static std::timed_mutex g_generation_mutex;
 
+// Stepping mode: the decision for the pending pause (set by
+// POST /generation/control). -1 = no decision yet; 0 = advance;
+// 1 = confirm; 2 = abort.
+static std::atomic<int> g_pause_decision(-1);
+
 // The engine runs as a child of the app process. If the app dies without a
 // graceful BackendService stop (swipe-away, LMK eviction, crash), the child is
 // orphaned with every QNN allocation still resident — RAM stays high until it
@@ -556,6 +562,8 @@ static void registerGenerateEndpoint(httplib::Server &svr, Pipeline *pipeline,
         res.set_content(err.dump(), "application/json");
         return;
       }
+      // The chunked provider below runs the generation; the mode handlers
+      // are wired inside it (they need the sink).
       res.set_chunked_content_provider(
           "text/event-stream",
           [pipeline, req, generation_lock](intptr_t,
@@ -563,6 +571,34 @@ static void registerGenerateEndpoint(httplib::Server &svr, Pipeline *pipeline,
             try {
               // generation_lock keeps the mutex held until the provider is
               // destroyed (end of streaming).
+
+              // Stepping mode: the pause handler blocks inside the generation
+              // until the app POSTs a decision to /generation/control. The
+              // sink connection is polled while waiting — a dead client
+              // aborts the run.
+              if (req->generation_mode == "stepping") {
+                req->pause_handler = [&sink](int) -> int {
+                  while (true) {
+                    int d = g_pause_decision.exchange(-1);
+                    if (d >= 0) return d;
+                    if (!sink.is_writable()) return 2;
+                    std::this_thread::sleep_for(
+                        std::chrono::milliseconds(200));
+                  }
+                };
+              }
+              if (req->generation_mode == "sweep") {
+                req->sweep_handler = [&sink](int index, int total,
+                                             const std::string &b64) {
+                  nlohmann::json s = {{"type", "sweep"},
+                                      {"index", index},
+                                      {"total", total},
+                                      {"image", b64},
+                                      {"format", "jpeg"}};
+                  std::string ev = "event: sweep\ndata: " + s.dump() + "\n\n";
+                  sink.write(ev.c_str(), ev.size());
+                };
+              }
 
               auto result = pipeline->generate(
                   *req, [&sink, &req](int s, int t, const std::string &img) {
@@ -654,6 +690,42 @@ static void registerGenerateEndpoint(httplib::Server &svr, Pipeline *pipeline,
 }
 
 // Binary protocol upscale endpoint - optimized for performance.
+// Stepping mode: deliver the user's decision for a pending pause
+// (see g_pause_decision). Auth-guarded like the other endpoints.
+static void registerControlEndpoint(httplib::Server &svr) {
+  svr.Post("/generation/control",
+           [](const httplib::Request &req, httplib::Response &res) {
+             if (!requestAuthorized(req)) {
+               respondUnauthorized(res);
+               return;
+             }
+             try {
+               auto json = nlohmann::json::parse(req.body);
+               std::string decision = json.value("decision", "");
+               int code = decision == "confirm"   ? 1
+                          : decision == "next"    ? 0
+                          : decision == "abort"   ? 2
+                                                  : -1;
+               if (code < 0) {
+                 res.status = 400;
+                 res.set_content(R"({"error":{"message":"Invalid decision","type":"request_error"}})",
+                                 "application/json");
+                 return;
+               }
+               g_pause_decision.store(code);
+               res.status = 200;
+               res.set_content(R"({"ok":true})", "application/json");
+             } catch (const std::exception &e) {
+               res.status = 400;
+               nlohmann::json err = {
+                   {"error",
+                    {{"message", "Invalid JSON: " + std::string(e.what())},
+                     {"type", "request_error"}}}};
+               res.set_content(err.dump(), "application/json");
+             }
+           });
+}
+
 static void registerUpscaleEndpoint(httplib::Server &svr) {
   svr.Post("/upscale", [](const httplib::Request &req, httplib::Response &res) {
     std::unique_ptr<QnnModel> tempUpscalerApp = nullptr;
@@ -972,6 +1044,7 @@ int main(int argc, char **argv) {
   if (pipeline)
     registerGenerateEndpoint(svr, pipeline.get(), text_encoder.get());
   registerUpscaleEndpoint(svr);
+  registerControlEndpoint(svr);
   if (text_encoder) registerTokenizeEndpoint(svr, text_encoder.get());
 
   // Start the orphan watchdog once the server is about to accept traffic.

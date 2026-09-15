@@ -96,7 +96,17 @@ class BackgroundGenerationService : Service() {
 
     sealed class GenerationState {
         object Idle : GenerationState()
-        data class Progress(val progress: Float, val intermediateImage: Bitmap? = null) : GenerationState()
+        data class Progress(
+            val progress: Float,
+            val intermediateImage: Bitmap? = null,
+            // Stepping mode: true while the run is paused after a step,
+            // waiting for the user's next / finish / cancel decision.
+            val paused: Boolean = false,
+        ) : GenerationState()
+
+        // One decoded image from a sweep run's checkpoint (steps = the step
+        // count the image represents).
+        data class SweepImage(val bitmap: Bitmap, val steps: Int)
 
         data class Complete(
             val bitmap: Bitmap,
@@ -104,9 +114,21 @@ class BackgroundGenerationService : Service() {
             // NSFW classifier score from the with_filter build; null when the
             // basic build ran (no safety checker, nothing to show).
             val nsfwScore: Float? = null,
+            // Sweep mode: the checkpoint images decoded before the final one
+            // (their step counts differ from the final image's).
+            val sweepImages: List<SweepImage> = emptyList(),
         ) : GenerationState()
         data class Error(val message: String) : GenerationState()
     }
+
+    // Extras for the active sweep run: target steps and the interval between
+    // checkpoint decodes (the run's schedule is target + 2*interval for a
+    // 3-image sweep).
+    var sweepTarget = 0
+    var sweepInterval = 0
+
+    // Checkpoint images decoded so far in the active sweep run.
+    val sweepImages = mutableListOf<GenerationState.SweepImage>()
 
     private fun updateState(newState: GenerationState) {
         _generationState.value = newState
@@ -168,6 +190,9 @@ class BackgroundGenerationService : Service() {
         // Generation mode: standard | stepping | sweep (stepping/sweep stream
         // lightweight CPU-side previews every step).
         val generationMode = intent.getStringExtra("generation_mode") ?: "standard"
+        sweepTarget = intent.getIntExtra("sweep_target", 0)
+        sweepInterval = intent.getIntExtra("sweep_interval", 0)
+        sweepImages.clear()
         // Backend to talk to: the local backend by default, or a remote host's
         // generation port when running in connected-device mode.
         val backendHost = intent.getStringExtra("backend_host") ?: LOCAL_BACKEND_HOST
@@ -318,6 +343,10 @@ class BackgroundGenerationService : Service() {
                     put("show_diffusion_process", if (ultrafix) false else showProcess)
                     put("show_diffusion_stride", showStride)
                 }
+                if (generationMode == "sweep") {
+                    put("sweep_target", sweepTarget)
+                    put("sweep_interval", sweepInterval)
+                }
                 if (ultrafix) {
                     put("ultrafix", true)
                     put("tile_size", ultrafixTileSize)
@@ -362,6 +391,7 @@ class BackgroundGenerationService : Service() {
                     // process shown every step would otherwise allocate a
                     // fresh width*height IntArray (4 MB at 1024x1024).
                     var previewPixels: IntArray? = null
+                    var lastProgress = 0f
 
                     // Read line by line for efficiency
                     readLoop@ while (isActive) {
@@ -383,6 +413,7 @@ class BackgroundGenerationService : Service() {
                                     val step = message.optInt("step")
                                     val totalSteps = message.optInt("total_steps")
                                     val progress = step.toFloat() / totalSteps
+                                    lastProgress = progress
 
                                     val b64Img = message.optString("image")
                                     var bitmap: Bitmap? = null
@@ -421,8 +452,46 @@ class BackgroundGenerationService : Service() {
                                         }
                                     }
 
-                                    updateState(GenerationState.Progress(progress, bitmap))
+                                    updateState(
+                                        GenerationState.Progress(
+                                            progress,
+                                            bitmap,
+                                            message.optBoolean("paused", false),
+                                        )
+                                    )
                                     updateNotification(progress)
+                                }
+
+                                "sweep" -> {
+                                    // Sweep checkpoint: a full-quality image
+                                    // decoded mid-run. Collect it (saved at
+                                    // completion) and show it in the live
+                                    // preview card.
+                                    val b64Img = message.optString("image")
+                                    if (b64Img.isNotEmpty()) {
+                                        val imageBytes =
+                                            Base64.getDecoder().decode(b64Img)
+                                        val bitmap =
+                                            BitmapFactory.decodeByteArray(
+                                                imageBytes,
+                                                0,
+                                                imageBytes.size,
+                                            ) ?: throw IOException(
+                                                "Failed to decode sweep image",
+                                            )
+                                        val index = message.optInt("index", 1)
+                                        val sweepSteps = sweepTarget +
+                                            (index - 1) * sweepInterval
+                                        sweepImages.add(
+                                            GenerationState.SweepImage(bitmap, sweepSteps),
+                                        )
+                                        updateState(
+                                            GenerationState.Progress(
+                                                lastProgress,
+                                                bitmap,
+                                            )
+                                        )
+                                    }
                                 }
 
                                 "complete" -> {
@@ -506,8 +575,10 @@ class BackgroundGenerationService : Service() {
                                             bitmap,
                                             returnedSeed,
                                             nsfwScore,
+                                            sweepImages.toList(),
                                         ),
                                     )
+                                    sweepImages.clear()
 
                                     Log.d(
                                         "BgGenService",

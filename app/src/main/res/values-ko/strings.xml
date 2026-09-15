@@ -41,6 +41,9 @@
     <string name="stepping_keep">유지</string>
     <string name="stepping_one_more">한 스텝 더</string>
     <string name="stepping_discard">버리기</string>
+    <string name="stepping_next">+1 스텝</string>
+    <string name="stepping_finish">완료</string>
+    <string name="stepping_cancel">취소</string>
     <string name="sdxl_lowram">SDXL 저메모리 모드</string>
     <string name="sdxl_lowram_hint">SDXL 전용: 각 모델을 필요할 때만 로드하고 사용 후 해제합니다. RAM이 16GB 미만인 기기에서 필요합니다. 생성 중 미리보기가 비활성화됩니다.</string>
     <string name="anima_lowram">Anima 저메모리 모드</string>

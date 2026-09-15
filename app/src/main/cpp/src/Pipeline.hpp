@@ -55,6 +55,19 @@ struct GenerationRequest {
   // set, per-step previews are forced on (stride 1) and rendered by the CPU
   // instead of the NPU VAE decoder.
   bool light_previews = false;
+  // Generation mode: "standard" | "stepping" | "sweep".
+  std::string generation_mode = "standard";
+  // Sweep: the target step (first checkpoint) and the step interval between
+  // checkpoint decodes; the schedule runs to `steps` (>= target+2*interval).
+  int sweep_target = 0;
+  int sweep_interval = 0;
+  // Stepping: called after each denoising step with the completed step count.
+  // Blocks until the app decides. Returns 0 = advance to the next step,
+  // 1 = confirm (finalize with the model's x0 estimate), 2 = abort.
+  std::function<int(int)> pause_handler;
+  // Sweep: called at each checkpoint with the decoded full-quality image
+  // (base64 JPEG) and its 1-based index / total.
+  std::function<void(int, int, const std::string &)> sweep_handler;
   int width = 512;
   int height = 512;
   float denoise_strength = 0.6f;
@@ -1111,15 +1124,40 @@ inline GenerationResult Pipeline::generate(
 
     beginDenoise(req);
 
-    for (int i = start_step; i < (int)timesteps.size(); ++i) {
-      bool light = req.light_previews;
-      if (light || (req.show_diffusion_process && previewSupported() &&
-                    (i - start_step) % req.show_diffusion_stride == 0)) {
-        progress_callback(current_step, total_run_steps,
-                          light ? renderLightPreview(req, latents)
+    const bool stepping = req.generation_mode == "stepping" &&
+                          req.pause_handler != nullptr;
+    const bool sweeping = req.generation_mode == "sweep" &&
+                          req.sweep_handler != nullptr &&
+                          req.sweep_target > 0 && req.sweep_interval > 0;
+    // Sweep checkpoints (absolute step counts after which a full-quality
+    // image is decoded and emitted): target, target+interval, ... The last
+    // checkpoint coincides with the run end (the normal completion decode).
+    std::vector<int> sweep_checkpoints;
+    if (sweeping) {
+      int cp = req.sweep_target;
+      while (cp < (int)timesteps.size() && (int)sweep_checkpoints.size() < 2) {
+        sweep_checkpoints.push_back(cp);
+        cp += req.sweep_interval;
+      }
+    }
+    int sweep_emitted = 0;
+    const int sweep_total = (int)sweep_checkpoints.size() + 1;
+
+    int i = start_step;
+    while (i < (int)timesteps.size()) {
+      // Pre-step preview: skipped in stepping mode (the post-step pause
+      // renders the fresh state); light previews serve sweep mode.
+      if (!stepping) {
+        if (req.light_previews ||
+            (req.show_diffusion_process && previewSupported() &&
+             (i - start_step) % req.show_diffusion_stride == 0)) {
+          progress_callback(current_step, total_run_steps,
+                            req.light_previews
+                                ? renderLightPreview(req, latents)
                                 : renderPreview(req, latents));
-      } else {
-        progress_callback(current_step, total_run_steps, "");
+        } else {
+          progress_callback(current_step, total_run_steps, "");
+        }
       }
 
       auto step_start_time = std::chrono::high_resolution_clock::now();
@@ -1218,7 +1256,8 @@ inline GenerationResult Pipeline::generate(
         }
       }
 
-      latents = scheduler->step(noise_pred, timesteps(i), latents).prev_sample;
+      auto step_output = scheduler->step(noise_pred, timesteps(i), latents);
+      latents = step_output.prev_sample;
 
       // Ultrafix low-frequency skip residual: pull only the LOW-frequency
       // band of the latent back toward the inversion trajectory, leaving
@@ -1260,6 +1299,74 @@ inline GenerationResult Pipeline::generate(
       }
 
       current_step++;
+
+      // Sweep checkpoint: decode the model's x0 estimate at full quality and
+      // emit it — the app saves each sweep image as it arrives.
+      if (!sweep_checkpoints.empty() && i + 1 == sweep_checkpoints.front()) {
+        sweep_checkpoints.erase(sweep_checkpoints.begin());
+        sweep_emitted++;
+        if (req.sweep_handler) {
+          std::string sweep_b64;
+          if (previewSupported()) {
+            try {
+              xt::xarray<float> x0 = step_output.pred_original_sample;
+              latentsToVae(x0);
+              xt::xarray<float> pixels = decodeToPixels(req, x0, false);
+              std::vector<uint8_t> sweep_out = pixelsToBytes(pixels);
+              int pw = req.width;
+              int ph = req.height;
+              if (needsAspectCrop(req)) {
+                cropCenter(sweep_out, req.width, req.height,
+                           req.target_crop_width, req.target_crop_height);
+                pw = req.target_crop_width;
+                ph = req.target_crop_height;
+              }
+              sweep_out = encodeJPEG(sweep_out, pw, ph, 90);
+              sweep_b64 = base64_encode(
+                  std::string(sweep_out.begin(), sweep_out.end()));
+            } catch (const std::exception &e) {
+              QNN_WARN("Sweep checkpoint decode failed: %s", e.what());
+            }
+          }
+          // Lowram / decode failure: fall back to the light preview so the
+          // sweep still produces its step-range comparison.
+          if (sweep_b64.empty()) {
+            sweep_b64 = renderLightPreview(req, latents);
+          }
+          req.sweep_handler(sweep_emitted, sweep_total, sweep_b64);
+        }
+      }
+
+      // Stepping pause: emit the fresh light preview and block for the
+      // user's decision (0 = advance, 1 = confirm & finalize, 2 = abort).
+      if (stepping) {
+        progress_callback(current_step, total_run_steps,
+                          renderLightPreview(req, latents));
+        int decision = req.pause_handler(current_step);
+        if (decision == 2) {
+          throw std::runtime_error("Cancelled in stepping mode");
+        }
+        if (decision == 1) {
+          // Confirm: the model's x0 estimate is the final image (exact at
+          // the last step; the best single-step estimate mid-run).
+          latents = step_output.pred_original_sample;
+          break;
+        }
+        // Advance: if the schedule is exhausted (sigma reached 0), re-noise
+        // the clean latents to the last schedule sigma and re-denoise one
+        // step — a refinement pass that lets stepping continue past the
+        // target step count.
+        if (i + 1 >= (int)timesteps.size()) {
+          xt::xarray<int> t_last = {(int)timesteps((int)timesteps.size() - 1)};
+          xt::xarray<float> eps =
+              xt::random::randn<float>(latents.shape());
+          latents = scheduler->add_noise(latents, eps, t_last);
+          scheduler->set_begin_index((int)timesteps.size() - 1);
+          i = (int)timesteps.size() - 2;
+        }
+      }
+
+      i++;
     }
 
     endDenoise();

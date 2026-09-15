@@ -39,6 +39,16 @@ inline GenerationRequest parseGenerationRequest(const nlohmann::json &json,
   // channels (no NPU VAE roundtrip). Used by the app's stepping/sweep
   // generation modes; forces per-step previews regardless of the stride.
   req.light_previews = json.value("light_previews", false);
+  // Generation mode (standard | stepping | sweep): stepping pauses after
+  // each step for the app's decision; sweep decodes checkpoint images.
+  req.generation_mode = json.value("generation_mode", "standard");
+  if (req.generation_mode != "standard" && req.generation_mode != "stepping" &&
+      req.generation_mode != "sweep")
+    req.generation_mode = "standard";
+  req.sweep_target = json.value("sweep_target", 0);
+  req.sweep_interval = json.value("sweep_interval", 0);
+  if (req.sweep_target < 0 || req.sweep_interval < 0)
+    throw std::invalid_argument("Invalid sweep_target/sweep_interval (>= 0)");
   // --- Consolidated request limits ---------------------------------------
   // These mirror the app's own UI ranges (GenerationDefaults.kt on the
   // Kotlin side). The engine is authoritative: out-of-range values are

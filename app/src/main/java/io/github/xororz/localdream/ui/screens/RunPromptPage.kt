@@ -35,12 +35,14 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Draw
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -96,6 +98,7 @@ internal fun RunPromptPage(
     onClearImg2imgState: () -> Unit,
     onSaveAllFields: () -> Unit,
     onGenerateClick: () -> Unit,
+    onSteppingDecision: (String) -> Unit,
 ) {
     val context = LocalContext.current
     // String resources hoisted to composable scope (lint: LocalContextGetResourceValueCall).
@@ -409,6 +412,38 @@ internal fun RunPromptPage(
                                     modifier = Modifier.fillMaxSize(),
                                     contentScale = ContentScale.Fit,
                                 )
+                            }
+                        }
+                        if (runState.paused) {
+                            // Stepping mode: the in-card decision controls —
+                            // finish (full-quality decode of the model's x0
+                            // estimate), one more step, or cancel.
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Button(
+                                    onClick = { onSteppingDecision("confirm") },
+                                    enabled = runState.paused,
+                                    modifier = Modifier.weight(1f),
+                                ) {
+                                    Text(stringResource(R.string.stepping_finish))
+                                }
+                                OutlinedButton(
+                                    onClick = { onSteppingDecision("next") },
+                                    enabled = runState.paused,
+                                    modifier = Modifier.weight(1f),
+                                ) {
+                                    Text(stringResource(R.string.stepping_next))
+                                }
+                                OutlinedButton(
+                                    onClick = { onSteppingDecision("abort") },
+                                    enabled = runState.paused,
+                                ) {
+                                    Text(stringResource(R.string.stepping_cancel))
+                                }
                             }
                         }
                     }

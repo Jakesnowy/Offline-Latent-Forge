@@ -88,7 +88,13 @@ import io.github.xororz.localdream.ui.components.BlockingProgressOverlay
 import io.github.xororz.localdream.ui.components.GenerationParamsDialog
 import io.github.xororz.localdream.ui.components.OverlayIconButton
 import io.github.xororz.localdream.ui.components.ZoomableImageOverlay
+import io.github.xororz.localdream.remote.RemoteProtocol
 import io.github.xororz.localdream.utils.LogCapture
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONObject
 import io.github.xororz.localdream.utils.ParamShare
 import io.github.xororz.localdream.utils.performUpscale
 import io.github.xororz.localdream.utils.reportImage
@@ -745,6 +751,37 @@ fun ModelRunScreen(
     // bitmap at its full resolution, using the prompt-page parameters. The
     // base image goes through its own file so a pending img2img selection in
     // tmp.txt is left untouched.
+    // Stepping mode: deliver the user's in-card decision to the engine's
+    // control endpoint (auth-guarded on remote hosts).
+    fun sendSteppingDecision(decision: String) {
+        coroutineScope.launch(Dispatchers.IO) {
+            try {
+                val body = JSONObject().put("decision", decision).toString()
+                val request = Request.Builder()
+                    .url("http://$backendHost/generation/control")
+                    .apply {
+                        backendAuthToken?.let {
+                            RemoteProtocol.addAuth(this, it)
+                        }
+                    }
+                    .post(
+                        body.toRequestBody(
+                            "application/json".toMediaTypeOrNull(),
+                        ),
+                    )
+                    .build()
+                OkHttpClient().newCall(request).execute().use { resp ->
+                    Log.d(
+                        "ModelRunScreen",
+                        "stepping decision '$decision' -> HTTP ${resp.code}",
+                    )
+                }
+            } catch (e: Exception) {
+                Log.e("ModelRunScreen", "stepping decision failed", e)
+            }
+        }
+    }
+
     fun startUltrafix() {
         val bmp = resultState.currentBitmap ?: return
         val tileSize = maxOf(setupState.currentWidth, setupState.currentHeight)
@@ -1489,6 +1526,10 @@ fun ModelRunScreen(
             "app_prefs",
             Context.MODE_PRIVATE,
         ).getString("generation_mode", "standard") ?: "standard"
+        val sweepIntervalPref = context.getSharedPreferences(
+            "app_prefs",
+            Context.MODE_PRIVATE,
+        ).getInt("sweep_interval", 2)
         setupState.generationMode = generationMode
 
         Log.d(
@@ -1497,26 +1538,32 @@ fun ModelRunScreen(
         )
 
         // Run plan: standard = N runs at the selected step count (batch);
-        // sweep = 3 runs on the same seed at 1/3, 2/3 and the full step count
-        // (each run is saved — a step-range comparison along one seed).
-        val baseSeed = runState.seed.toLongOrNull()
-        val runPlan: List<Int> = when (generationMode) {
+        // sweep = ONE run whose schedule extends to target + 2*interval steps,
+        // with full-quality checkpoint decodes at target, target+interval and
+        // the schedule end (a step-range comparison along one seed — see
+        // Pipeline's sweep checkpoints). Stepping = a single run with per-step
+        // light previews and a pause after every step.
+        val runSteps: Int = when (generationMode) {
             "sweep" -> {
-                val s = runState.steps.roundToInt()
-                val third = (s / 3).coerceAtLeast(1)
-                val twoThirds = (2 * s / 3).coerceAtLeast(third + 1)
-                listOf(third, twoThirds, s)
+                val target = runState.steps.roundToInt()
+                target + 2 * sweepIntervalPref
             }
-            else -> {
-                val actualBatchCount =
-                    if (runState.seed.isNotBlank()) 1 else runState.batchCounts
-                List(actualBatchCount) { runState.steps.roundToInt() }
-            }
+            else -> runState.steps.roundToInt()
+        }
+        val sweepTargetValue = if (generationMode == "sweep") {
+            runState.steps.roundToInt()
+        } else {
+            0
         }
 
         batchGenerationJob = coroutineScope.launch {
-            var sweepSeed: Long? = null
-            for ((i, iterSteps) in runPlan.withIndex()) {
+            val actualBatchCount =
+                if (generationMode != "standard" || runState.seed.isNotBlank()) {
+                    1
+                } else {
+                    runState.batchCounts
+                }
+            for (i in 0 until actualBatchCount) {
                 runState.currentBatchIndex = i + 1
                 Log.d(
                     "ModelRunScreen",
@@ -1526,7 +1573,7 @@ fun ModelRunScreen(
                 // Update setupState.generationParamsTmp to reflect current parameters
                 // This allows parameters to be changed during batch execution
                 setupState.generationParamsTmp = GenerationParameters(
-                    steps = iterSteps,
+                    steps = runSteps,
                     cfg = runState.cfg,
                     seed = 0,
                     prompt = promptField.text,
@@ -1549,16 +1596,14 @@ fun ModelRunScreen(
                         "negative_prompt",
                         negativePromptField.text,
                     )
-                    putExtra("steps", iterSteps)
+                    putExtra("steps", runSteps)
                     putExtra("cfg", runState.cfg)
-                    // Sweep: lock the seed after the first run so every image
-                    // in the range shares it.
-                    val iterSeed = if (generationMode == "sweep") {
-                        if (i == 0) baseSeed else sweepSeed
-                    } else {
-                        runState.seed.toLongOrNull()
+                    runState.seed.toLongOrNull()
+                        ?.let { putExtra("seed", it) }
+                    if (generationMode == "sweep") {
+                        putExtra("sweep_target", sweepTargetValue)
+                        putExtra("sweep_interval", sweepIntervalPref)
                     }
-                    iterSeed?.let { putExtra("seed", it) }
                     if (generationMode != "standard") {
                         putExtra("generation_mode", generationMode)
                     }
@@ -1599,16 +1644,11 @@ fun ModelRunScreen(
                     "start service sent - batch $i",
                 )
 
-                val completedState = BackgroundGenerationService.generationState
+                BackgroundGenerationService.generationState
                     .first { state ->
                         state is GenerationState.Complete ||
                             state is GenerationState.Error
                     }
-                if (generationMode == "sweep" && i == 0 &&
-                    completedState is GenerationState.Complete
-                ) {
-                    sweepSeed = completedState.seed
-                }
 
                 Log.d(
                     "ModelRunScreen",
@@ -1729,6 +1769,9 @@ fun ModelRunScreen(
                                 onClearImg2imgState = { clearImg2imgState() },
                                 onSaveAllFields = { saveAllFields() },
                                 onGenerateClick = { startGeneration() },
+                                onSteppingDecision = { decision ->
+                                    sendSteppingDecision(decision)
+                                },
                             )
 
                         1 -> ModelRunResultPage(
@@ -2052,38 +2095,6 @@ fun ModelRunScreen(
 
     // Runs the confirmed upscale over the currently displayed bitmap and
     // saves the result (DB + JPG) via HistoryManager.
-    if (setupState.showSteppingDialog) {
-        SteppingResultDialog(
-            bitmap = resultState.currentBitmap,
-            onKeep = {
-                setupState.showSteppingDialog = false
-                setupState.steppingSavedItem = null
-            },
-            onOneMoreStep = {
-                setupState.showSteppingDialog = false
-                setupState.steppingSavedItem?.let { item ->
-                    coroutineScope.launch(Dispatchers.IO) {
-                        historyManager.deleteHistoryItem(item)
-                    }
-                }
-                setupState.steppingSavedItem = null
-                resultState.currentDisplayedHistoryId = null
-                runState.steps = (runState.steps.roundToInt() + 1).toFloat()
-                startGeneration()
-            },
-            onDiscard = {
-                setupState.showSteppingDialog = false
-                setupState.steppingSavedItem?.let { item ->
-                    coroutineScope.launch(Dispatchers.IO) {
-                        historyManager.deleteHistoryItem(item)
-                    }
-                }
-                setupState.steppingSavedItem = null
-                resultState.currentDisplayedHistoryId = null
-            },
-        )
-    }
-
     fun runUpscale(selectedUpscaler: UpscalerModel, selectedScale: Int) {
         // Execute upscale
         resultState.currentBitmap?.let { bitmap ->

@@ -7,6 +7,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import io.github.xororz.localdream.data.GenerationMode
+import io.github.xororz.localdream.data.HistoryItem
 import io.github.xororz.localdream.data.HistoryManager
 import io.github.xororz.localdream.data.Model
 import io.github.xororz.localdream.service.BackgroundGenerationService
@@ -50,6 +51,7 @@ internal fun RunGenerationEffects(
                 }
                 runState.progress = state.progress
                 runState.isRunning = true
+                runState.paused = state.paused
                 state.intermediateImage?.let { resultState.intermediateBitmap = it }
             }
 
@@ -108,24 +110,35 @@ internal fun RunGenerationEffects(
                     // forwarded to both the snapshot and the currently-displayed marker
                     // so handleSaveImage can later confirm the user is still looking at
                     // this generation (and not a different history thumbnail).
+                    // Sweep mode: the intermediate checkpoint images are saved
+                    // first (each at its own step count), then the final.
                     coroutineScope.launch(Dispatchers.IO) {
-                        val savedItem = historyManager.saveGeneratedImage(
-                            modelId = modelId,
-                            bitmap = state.bitmap,
-                            params = newParams,
-                            mode = currentGenerationMode,
-                        )
-                        if (savedItem != null) {
+                        val toSave = buildList {
+                            state.sweepImages.forEach {
+                                add(it.bitmap to it.steps)
+                            }
+                            add(state.bitmap to setupState.generationParamsTmp.steps)
+                        }
+                        var lastSaved: HistoryItem? = null
+                        for ((bitmap, steps) in toSave) {
+                            val savedItem = historyManager.saveGeneratedImage(
+                                modelId = modelId,
+                                bitmap = bitmap,
+                                params = newParams.copy(steps = steps),
+                                mode = currentGenerationMode,
+                            )
+                            if (savedItem != null) {
+                                lastSaved = savedItem
+                            }
+                        }
+                        if (lastSaved != null) {
                             withContext(Dispatchers.Main) {
                                 // An ultrafix result is a standalone image, not a
                                 // stitchable inpaint patch.
                                 if (!wasUltrafix) {
-                                    resultState.stitchableHistoryIds = setOf(savedItem.id)
+                                    resultState.stitchableHistoryIds = setOf(lastSaved.id)
                                 }
-                                resultState.currentDisplayedHistoryId = savedItem.id
-                                if (setupState.generationMode == "stepping") {
-                                    setupState.steppingSavedItem = savedItem
-                                }
+                                resultState.currentDisplayedHistoryId = lastSaved.id
                             }
                         }
                     }
@@ -147,12 +160,6 @@ internal fun RunGenerationEffects(
                     // the DB save above resolves.
                     resultState.stitchableHistoryIds = emptySet()
                     resultState.currentDisplayedHistoryId = null
-
-                    // Stepping mode: hold the just-saved result for the
-                    // keep / one-more-step / discard decision dialog.
-                    if (setupState.generationMode == "stepping") {
-                        setupState.showSteppingDialog = true
-                    }
 
                     Log.d(
                         "ModelRunScreen",
@@ -177,6 +184,7 @@ internal fun RunGenerationEffects(
                 resultState.intermediateBitmap = null
                 runState.errorMessage = state.message
                 runState.isRunning = false
+                runState.paused = false
                 runState.progress = 0f
                 runState.generationStartTime = null
                 ultrafixState.pendingUltrafix = false
