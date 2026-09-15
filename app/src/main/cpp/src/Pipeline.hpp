@@ -918,6 +918,16 @@ inline std::string Pipeline::renderLightPreview(const GenerationRequest &req,
       cropCenter(out_data, req.width, req.height, req.target_crop_width,
                  req.target_crop_height);
     }
+    // The progress event's format field follows preview_format (the app sends
+    // "jpeg"), so the payload MUST be an encoded image — raw RGB would fail
+    // BitmapFactory on the app side and the preview would silently vanish.
+    int final_w = out_w;
+    int final_h = out_h;
+    if (needsAspectCrop(req)) {
+      final_w = req.target_crop_width;
+      final_h = req.target_crop_height;
+    }
+    out_data = encodeJPEG(out_data, final_w, final_h, 70);
     std::string image_str_result(out_data.begin(), out_data.end());
     return base64_encode(image_str_result);
   } catch (const std::exception &e) {
