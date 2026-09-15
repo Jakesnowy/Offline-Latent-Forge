@@ -133,6 +133,16 @@ internal fun RunPromptPage(
                         .putString("generation_mode", mode)
                         .apply()
                 },
+                sweepInterval = context.getSharedPreferences(
+                    "app_prefs",
+                    Context.MODE_PRIVATE,
+                ).getInt("sweep_interval", 2),
+                onSweepIntervalChange = { value ->
+                    context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+                        .edit()
+                        .putInt("sweep_interval", value)
+                        .apply()
+                },
                 isSdxl = model?.usesFixedCanvas == true,
                 runOnCpu = model?.runOnCpu ?: false,
                 useImg2img = useImg2img,

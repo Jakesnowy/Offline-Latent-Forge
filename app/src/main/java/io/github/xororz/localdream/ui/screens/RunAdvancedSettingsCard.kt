@@ -84,6 +84,8 @@ internal fun RunAdvancedSettingsCard(
     onToggleExpanded: () -> Unit,
     generationMode: String,
     onGenerationModeChange: (String) -> Unit,
+    sweepInterval: Int,
+    onSweepIntervalChange: (Int) -> Unit,
     isSdxl: Boolean,
     runOnCpu: Boolean,
     useImg2img: Boolean,
@@ -257,7 +259,19 @@ internal fun RunAdvancedSettingsCard(
             ) {
                 Column {
                     Text(
-                        stringResource(R.string.steps, steps.roundToInt()),
+                        text = if (activeMode == "sweep") {
+                            // Sweep: show the checkpoint step counts the
+                            // interval produces (target, +interval, +2*interval).
+                            val t = steps.roundToInt()
+                            stringResource(
+                                R.string.steps_range,
+                                "$t",
+                                "${t + sweepInterval}",
+                                "${t + 2 * sweepInterval}",
+                            )
+                        } else {
+                            stringResource(R.string.steps, steps.roundToInt())
+                        },
                         style = MaterialTheme.typography.bodyMedium,
                     )
                     Slider(
@@ -267,6 +281,23 @@ internal fun RunAdvancedSettingsCard(
                         steps = 48,
                         modifier = Modifier.fillMaxWidth(),
                     )
+                }
+                if (activeMode == "sweep") {
+                    // Sweep interval: how many steps between checkpoint
+                    // decodes after the target is reached (1..5).
+                    Column {
+                        Text(
+                            stringResource(R.string.sweep_interval, sweepInterval),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Slider(
+                            value = sweepInterval.toFloat(),
+                            onValueChange = { onSweepIntervalChange(it.roundToInt()) },
+                            valueRange = 1f..5f,
+                            steps = 3,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
                 }
 
                 Column {

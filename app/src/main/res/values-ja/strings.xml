@@ -44,6 +44,8 @@
     <string name="stepping_next">+1 ステップ</string>
     <string name="stepping_finish">完了</string>
     <string name="stepping_cancel">キャンセル</string>
+    <string name="sweep_interval">間隔: %d</string>
+    <string name="steps_range">ステップ数: %s</string>
     <string name="sdxl_lowram">SDXL 低メモリモード</string>
     <string name="sdxl_lowram_hint">SDXL 専用：各モデルを必要時にのみ読み込み、使用後に解放します。16GB 未満のデバイスでは有効化してください。生成途中のプレビューは無効になります。</string>
     <string name="anima_lowram">Anima 低メモリモード</string>
