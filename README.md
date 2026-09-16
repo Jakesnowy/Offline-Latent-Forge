@@ -30,6 +30,11 @@ plus the fork's own additions, kept in sync with upstream where practical:
   batch/seed interplay (batch is locked to 1 while a seed is set, with an
   explanatory dialog), live UltraFix denoise-strength feedback, finer CFG
   support for DMD2 checkpoints.
+- **Generation modes** — **stepping** (watch the image form step by step with
+  live CPU previews, then keep, continue for higher quality, or discard —
+  powered by an adjustable pause point) and **sweep** (the same seed rendered
+  at three step counts for direct comparison), plus a 3-way preview-quality
+  selector (Off / Fast / Full).
 - **First-class "upscale" mode** — upscaled copies are recorded and filterable
   as their own mode in history instead of inheriting the source mode.
 - **Windows build support** — a first-class `build.bat` native-engine build

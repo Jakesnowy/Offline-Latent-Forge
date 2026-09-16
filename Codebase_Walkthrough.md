@@ -1,8 +1,8 @@
-# Reverie / "Local Dream" — Codebase Walkthrough
+# Latent Forge (fork of Local Dream) — Codebase Walkthrough
 
 ## 1. What this project is
 
-**Local Dream** (`io.github.xororz.localdream`, v2.8.1) is an Android app that runs **Stable Diffusion image generation entirely on-device**, with a unique focus on **Snapdragon NPU (Hexagon) acceleration** via Qualcomm's QNN SDK. It also supports CPU (via Alibaba MNN) and GPU (OpenCL) inference. It supports **SD1.5** (NPU on Hexagon V68+), **SDXL** (NPU on Snapdragon 8 Gen 3+), plus upscaling (Real-ESRGAN / UltraSharp), inpainting, history management, and a device-to-device "remote host" mode.
+**Latent Forge** (`io.github.jakesnowy.offlinelatentforge`, v2.8.1) is a community fork of [Local Dream](https://github.com/xororz/local-dream) (`io.github.xororz.localdream`) — an Android app that runs **Stable Diffusion image generation entirely on-device**, with a unique focus on **Snapdragon NPU (Hexagon) acceleration** via Qualcomm's QNN SDK. It also supports CPU (via Alibaba MNN) and GPU (OpenCL) inference. It supports **SD1.5** (NPU on Hexagon V68+), **SDXL** (NPU on Snapdragon 8 Gen 3+), plus upscaling (Real-ESRGAN / UltraSharp), inpainting, history management, and a device-to-device "remote host" mode. On top of upstream it adds privacy hardening (backup exclusion, authenticated host mode), verified downloads (SHA-256 + TOFU pinning), and the **generation modes** described in §6.
 
 ## 2. Tech stack & how to build/run
 
@@ -11,7 +11,7 @@
 - **Inference backends:** Qualcomm QNN (NPU), MNN (CPU/OpenCL)
 - **Support libs (C++):** cpp-httplib (local HTTP server), tokenizers-cpp, xtensor/xsimd (tensor math), stb (images), zstd (model decompression), nlohmann/json
 - **Support libs (Kotlin):** OkHttp, Coil, Room (DB), KSP, ktlint + detekt
-- **Build:** Gradle with version catalog; Java 17 target (build with **JDK 21** — newer JDKs break AGP's `JdkImageTransform`); `minSdk 28`, `targetSdk 36`; two product flavors — **`basic`** and **`filter`** (adds content filtering). **Debug builds install alongside release builds** (`applicationIdSuffix = ".debug"`, launcher label "Local Dream Debug"). Kotlin compile, ktlint, detekt and an APK assembly run on every push/PR via the CI workflow (`.github/workflows/ci.yml`).
+- **Build:** Gradle with version catalog; Java 17 target (build with **JDK 21** — newer JDKs break AGP's `JdkImageTransform`); `minSdk 28`, `targetSdk 36`; two product flavors — **`basic`** and **`filter`** (adds content filtering). **Debug builds install alongside release builds** (`applicationIdSuffix = ".debug"`, launcher label "Latent Forge Debug"). Kotlin compile, ktlint and detekt run on every push/PR (APK assembly on PRs); releases are cut manually via workflow dispatch (`.github/workflows/ci.yml`).
 - **Native engine:** requires the Qualcomm QAIRT (QNN) SDK 2.39.0.250926 — its path is overridable (`-DQNN_SDK_ROOT=...`); the build patches Qualcomm's SampleApp in-tree and links the Hexagon stub/skel libs.
   - **Linux:** `app/src/main/cpp/build.sh` (CMake presets; NDK r28 at `/data/android-ndk-r28`; ccache optional — auto-detected).
   - **Windows:** `app/src/main/cpp/build.bat` (self-configuring: override `ANDROID_NDK_ROOT` / `QAIRT_SDK_ROOT` / `ANDROID_SDK_ROOT` / `ANDROID_CMAKE`, otherwise auto-detected; uses the SDK's bundled CMake ≥3.31 and prefers **NDK r28**).
@@ -56,8 +56,10 @@ app/src/main/
 │   │                  # + 1.5s idle-grace reuse), BackgroundGenerationService,
 │   │                  # ModelDownloadService, RemoteHostService
 │   ├── remote/        # RemoteApiClient/HostServer/Protocol - control one phone from another
-│   ├── ui/screens/    # ModelRunScreen (173KB!), ModelListScreen (183KB), InpaintScreen,
-│   │                  # UpscaleScreen, HistoryScreen, CropImageScreen...
+│   ├── ui/screens/    # ModelRunScreen (orchestrator) + Run*State holders and
+│   │                  # Run* region composables (RunPromptPage, RunAdvancedSettingsCard,
+│   │                  # RunGenerationEffects, ...) — the 3.4k-line screen was decomposed;
+│   │                  # ModelListScreen, InpaintScreen, UpscaleScreen, HistoryScreen, ...
 │   ├── ui/theme/      # MD3 Expressive theme, preset color schemes, motion
 │   ├── ui/components/ # PromptTagTextField, dialogs, zoomable image overlay
 │   ├── navigation/    # Screen routes
@@ -84,7 +86,19 @@ Header-only C++ where the notable pieces are:
 | `SDStructure.hpp` (130KB) | Model architecture definitions |
 | `LoraMapping.hpp` | LoRA weight mapping/injection |
 
-## 6. Patterns & conventions
+## 6. Generation modes (the fork's flagship addition)
+
+Three run plans selected in the advanced-settings panel (`generation_mode` pref), all driven app-side through the same batch machinery — the engine stays a plain single-run server:
+
+- **Standard** — the selected batch count (locked to 1 while a seed is set).
+- **Stepping** (experimental, muted flask button) — the engine pauses after every step from a user-configurable **pause point** (`pause_at`, slider 2..S−1, auto default `S − round(S/4).coerce(2,10)`), emitting CPU **light previews** (latent ch0-2 → contrast stretch → nearest upscale → JPEG, no model involvement — works in low-RAM where VAE decodes don't). In-card Continue / Finish / Cancel: Continue advances through *real* schedule steps; Finish exits early with the model's `pred_original_sample` estimate. History records the engine-reported exit step (shown as "~23") plus the full schedule (`scheduleSteps`) — **Reproduce** replays the FULL schedule, because the sigma ladder depends on the total step count.
+- **Sweep** — three consecutive same-seed runs at S, S+i, S+2i (interval slider 1..5); one seed is resolved up front when the field is blank so the only variable is the step count.
+
+The **preview-quality selector** (Off / Fast / Full) replaces upstream's "Show Generation Process" toggle: Fast = the CPU light previews above (default), Full = periodic full VAE decodes (NPU models only, stride-controlled). Engine precedence gotcha: `light_previews` short-circuits `show_diffusion_process`, so Full must send `light_previews=false` explicitly.
+
+Run-plan progress: the progress card (top of the prompt page, auto-scrolled into view on start) shows `currentBatchIndex/batchTotal` against the *actual* plan size (`RunGenerationState.batchTotal`), and the results page auto-navigation fires on the plan's last run (so stepping's Finish always lands there, mid-sweep never does).
+
+## 7. Patterns & conventions
 
 - **StateFlow-driven UI state**; backend lifecycle uses a *desired vs. serving config* reconciliation pattern on a single-threaded dispatcher (well-commented concurrency reasoning throughout).
 - **Immutability-friendly Kotlin**, ktlint + detekt enforced in CI (`.github/`).
@@ -92,13 +106,14 @@ Header-only C++ where the notable pieces are:
 - Room DB only for history; other prefs are DataStore/JSON (`Preferences.kt`).
 - The native engine is intentionally **transport-agnostic** (HTTP JSON + binary endpoints), which is what makes remote-host mode (phone-as-NPU-server) nearly free.
 
-## 7. Where to start for common tasks
+## 8. Where to start for common tasks
 
 - **Change generation behavior/sampling:** `app/src/main/cpp/src/Pipeline*.hpp`, schedulers
-- **Add UI screen/param:** `ui/screens/ModelRunScreen.kt` (+ `ModelRunPages.kt`, `ModelRunSupport.kt`), route in `navigation/Navigation.kt` and `MainActivity.AppContent`
+- **Add UI screen/param:** `ui/screens/ModelRunScreen.kt` (orchestrator) + the `Run*` region composables and `Run*State` holders in the same package (`ModelRunSupport.kt` for shared helpers); route in `navigation/Navigation.kt` and `MainActivity.AppContent`
+- **Generation modes / pause protocol:** `ModelRunScreen.startGeneration` (run plan) + `ui/screens/RunGenerationEffects.kt` (state machine) + engine `Pipeline.hpp` `stepping`/`pause_at`; design doc in `memory-bank/design_generation_modes.md` (gitignored)
 - **Model catalog/formats:** `data/Model.kt`, `data/GenerationDefaults.kt`, `data/ModelConfig.kt`
 - **Backend process logic:** `service/BackendService.kt`; endpoints in `cpp/src/main.cpp`
 - **Download/remote features:** `service/ModelDownloadService.kt`, `remote/*`
 
-**Summary:** A well-engineered on-device Stable Diffusion Android app whose defining design is a Kotlin/Compose front-end talking over localhost HTTP to a spawned C++ diffusion engine that targets Qualcomm's Hexagon NPU, CPU, and GPU backends — enabling both fast local generation and phone-to-phone distributed inference. The main caveats for building: Linux/Windows host with the QNN SDK path configured, and arm64-v8a-only output.
+**Summary:** A well-engineered on-device Stable Diffusion Android app whose defining design is a Kotlin/Compose front-end talking over localhost HTTP to a spawned C++ diffusion engine that targets Qualcomm's Hexagon NPU, CPU, and GPU backends — enabling both fast local generation and phone-to-phone distributed inference. This fork layers privacy hardening, verified downloads, and app-driven generation modes (stepping with an interactive pause protocol, and seed-controlled sweeps) on top. The main caveats for building: Linux/Windows host with the QNN SDK path configured, and arm64-v8a-only output.
 
