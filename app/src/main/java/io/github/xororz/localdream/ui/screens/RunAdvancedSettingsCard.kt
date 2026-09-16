@@ -45,6 +45,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -134,6 +135,17 @@ internal fun RunAdvancedSettingsCard(
     // prop changes (model switch re-reads the pref).
     var selectedMode by remember(generationMode) { mutableStateOf(generationMode) }
     val activeMode = selectedMode.ifBlank { generationMode }
+
+    // Local mirror of the persisted stepping pause point (see selectedMode):
+    // the card-face label and the slider must track a drag immediately and
+    // pref writes don't trigger recomposition. Re-syncs when the props change
+    // (step-count edits move the auto default or clamp a manual value;
+    // reproduce/restore re-reads the pref).
+    var pausePoint by remember(steps.roundToInt(), pauseAt, pauseAtAuto) {
+        mutableIntStateOf(
+            steppingPausePoint(steps.roundToInt(), pauseAt, pauseAtAuto),
+        )
+    }
 
     // Last free (seed-less) batch position, restored when the seed is cleared.
     var retainedBatch by rememberSaveable { mutableFloatStateOf(1f) }
@@ -235,9 +247,10 @@ internal fun RunAdvancedSettingsCard(
                                 // count; the engine pauses at the pause point
                                 // (auto default: steps minus the reserve) and
                                 // after every later step (see startGeneration).
+                                // pausePoint is the card-level mirror so the
+                                // label tracks a slider drag (see selectedMode).
                                 val t = steps.roundToInt()
-                                val pause =
-                                    steppingPausePoint(t, pauseAt, pauseAtAuto)
+                                val pause = pausePoint
                                 if (t >= 3) {
                                     stringResource(
                                         R.string.steps_pause,
@@ -266,8 +279,10 @@ internal fun RunAdvancedSettingsCard(
                     // Pause point: where the engine starts pausing (and the
                     // reserve begins). Auto-managed unless the user moves it;
                     // the reserve is whatever remains up to the step count.
+                    // pausePoint is the card-level mirror (see selectedMode):
+                    // it tracks the drag immediately and the pref write below
+                    // makes the value manual for later runs.
                     val t = steps.roundToInt()
-                    val pausePoint = steppingPausePoint(t, pauseAt, pauseAtAuto)
                     Column {
                         Text(
                             stringResource(R.string.pause_point, pausePoint),
@@ -276,9 +291,9 @@ internal fun RunAdvancedSettingsCard(
                         Slider(
                             value = pausePoint.toFloat(),
                             onValueChange = { value ->
-                                onPauseAtChange(
-                                    value.roundToInt().coerceIn(2, t - 1),
-                                )
+                                val manual = value.roundToInt().coerceIn(2, t - 1)
+                                pausePoint = manual
+                                onPauseAtChange(manual)
                             },
                             valueRange = 2f..(t - 1).coerceAtLeast(2).toFloat(),
                             steps = (t - 4).coerceAtLeast(0),
