@@ -124,10 +124,10 @@
     <string name="no_npu_models">暂无模型</string>
     <string name="img2img_hint">开启img2img功能，如果你不需要或遇到问题请关闭。关闭后SDXL宽高比和UltraFix将无法使用</string>
     <string name="preview_quality">生成过程预览</string>
-    <string name="preview_quality_hint">关闭：最快。快速：每步显示近似 CPU 预览。高质量：用真实 VAE 解码中间步骤（原“显示生成过程”）— 较慢，仅 NPU 模型可用。</string>
+    <string name="preview_quality_hint">关闭：最快。快速：每步显示近似 CPU 预览。完整：用真实 VAE 解码中间步骤（原“显示生成过程”）— 较慢，仅 NPU 模型可用。</string>
     <string name="preview_quality_off">关闭</string>
     <string name="preview_quality_fast">快速</string>
-    <string name="preview_quality_high">高质量</string>
+    <string name="preview_quality_high">完整</string>
     <string name="preview_stride">预览步长</string>
     <plurals name="preview_stride_hint">
         <item quantity="other">每 %d 步更新一次预览（1–10）。</item>

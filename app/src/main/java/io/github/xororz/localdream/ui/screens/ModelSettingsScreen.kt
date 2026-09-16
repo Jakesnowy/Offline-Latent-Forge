@@ -604,9 +604,9 @@ internal fun ModelSettingsScreen(
                             modifier = Modifier.padding(horizontal = 16.dp),
                         )
                         // Preview quality: Off / Fast (CPU light previews) /
-                        // High quality (full VAE decodes). Fast is the
+                        // Full (full VAE decodes). Fast is the
                         // default — a live approximate preview for every
-                        // standard run without the VAE cost; High is the old
+                        // standard run without the VAE cost; Full is the old
                         // "Show Generation Process" switch.
                         Column(
                             modifier = Modifier

@@ -70,9 +70,9 @@ import io.github.xororz.localdream.utils.ParamShare
 import kotlin.math.roundToInt
 
 /**
- * The prompt page of [ModelRunScreen]: the settings card (img2img picker,
- * advanced settings), the prompt/negative-prompt fields, the generate
- * button, the error banner, the live progress card, and the img2img source
+ * The prompt page of [ModelRunScreen]: the live progress card, the settings
+ * card (img2img picker, advanced settings), the prompt/negative-prompt
+ * fields, the generate button, the error banner, and the img2img source
  * thumbnail strip.
  *
  * All state is read from the holders *inside* this composable so its
@@ -125,6 +125,132 @@ internal fun RunPromptPage(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            AnimatedVisibility(
+                visible = runState.isRunning,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut(),
+            ) {
+                ElevatedCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.large,
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            text = if (runState.currentBatchIndex > 0) {
+                                "${
+                                    stringResource(
+                                        R.string.generating,
+                                    )
+                                } (${runState.currentBatchIndex}/${runState.batchCounts})…"
+                            } else {
+                                stringResource(
+                                    R.string.generating,
+                                )
+                            },
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                        SmoothLinearWavyProgressIndicator(
+                            progress = runState.progress,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Text(
+                            "${(runState.progress * 100).toInt()}%",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        resultState.intermediateBitmap?.let { bitmap ->
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Card(
+                                shape = MaterialTheme.shapes.small,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .aspectRatio(1f),
+                            ) {
+                                Image(
+                                    bitmap = bitmap.asImageBitmap(),
+                                    contentDescription = "Generation Preview",
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Fit,
+                                )
+                            }
+                        }
+                        if (runState.paused && runState.steppingScheduleSteps > 0) {
+                            // Stepping mode: the engine pauses after every
+                            // step from the user's count onward (the reserve
+                            // plan — see startGeneration). The schedule runs a
+                            // few steps past the user's count, so every
+                            // continued step is a real schedule step that
+                            // strictly refines the estimate; there is no
+                            // past-the-end degradation path.
+                            val schedule = runState.steppingScheduleSteps
+                            val pauseAt = runState.steppingPauseAt
+                            val currentStep =
+                                (runState.progress * schedule).roundToInt()
+                            val reserveTotal = schedule - pauseAt
+                            val reserveDone =
+                                (currentStep - pauseAt).coerceIn(0, reserveTotal)
+                            val atScheduleEnd = currentStep >= schedule
+
+                            // Reserve bar: subtle tracker under the preview
+                            // showing the position through the extra steps.
+                            SmoothLinearWavyProgressIndicator(
+                                progress = if (reserveTotal > 0) {
+                                    reserveDone.toFloat() / reserveTotal
+                                } else {
+                                    1f
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            Text(
+                                stringResource(
+                                    R.string.stepping_step_position,
+                                    currentStep,
+                                    schedule,
+                                ),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            if (atScheduleEnd) {
+                                // Schedule end: Continue disappears — Finish
+                                // with a short auto-confirm countdown.
+                                SteppingAutoFinish(onSteppingDecision)
+                            } else {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 8.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    Button(
+                                        onClick = { onSteppingDecision("confirm") },
+                                        modifier = Modifier.weight(1f),
+                                    ) {
+                                        Text(stringResource(R.string.stepping_finish))
+                                    }
+                                    OutlinedButton(
+                                        onClick = { onSteppingDecision("next") },
+                                        modifier = Modifier.weight(1f),
+                                    ) {
+                                        Text(stringResource(R.string.stepping_continue))
+                                    }
+                                    OutlinedButton(
+                                        onClick = {
+                                            runState.userRequestedAbort = true
+                                            onSteppingDecision("abort")
+                                        },
+                                    ) {
+                                        Text(stringResource(R.string.stepping_cancel))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             RunAdvancedSettingsCard(
                 expanded = setupState.showAdvancedSettings,
                 onToggleExpanded = {
@@ -393,131 +519,6 @@ internal fun RunPromptPage(
                                 color = MaterialTheme.colorScheme.onErrorContainer,
                                 style = MaterialTheme.typography.bodyMedium,
                             )
-                        }
-                    }
-                }
-            }
-            AnimatedVisibility(
-                visible = runState.isRunning,
-                enter = expandVertically() + fadeIn(),
-                exit = shrinkVertically() + fadeOut(),
-            ) {
-                ElevatedCard(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = MaterialTheme.shapes.large,
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Text(
-                            text = if (runState.currentBatchIndex > 0) {
-                                "${
-                                    stringResource(
-                                        R.string.generating,
-                                    )
-                                } (${runState.currentBatchIndex}/${runState.batchCounts})…"
-                            } else {
-                                stringResource(
-                                    R.string.generating,
-                                )
-                            },
-                            style = MaterialTheme.typography.titleMedium,
-                        )
-                        SmoothLinearWavyProgressIndicator(
-                            progress = runState.progress,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        Text(
-                            "${(runState.progress * 100).toInt()}%",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        resultState.intermediateBitmap?.let { bitmap ->
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Card(
-                                shape = MaterialTheme.shapes.small,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .aspectRatio(1f),
-                            ) {
-                                Image(
-                                    bitmap = bitmap.asImageBitmap(),
-                                    contentDescription = "Generation Preview",
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentScale = ContentScale.Fit,
-                                )
-                            }
-                        }
-                        if (runState.paused && runState.steppingScheduleSteps > 0) {
-                            // Stepping mode: the engine pauses after every
-                            // step from the user's count onward (the reserve
-                            // plan — see startGeneration). The schedule runs a
-                            // few steps past the user's count, so every
-                            // continued step is a real schedule step that
-                            // strictly refines the estimate; there is no
-                            // past-the-end degradation path.
-                            val schedule = runState.steppingScheduleSteps
-                            val pauseAt = runState.steppingPauseAt
-                            val currentStep =
-                                (runState.progress * schedule).roundToInt()
-                            val reserveTotal = schedule - pauseAt
-                            val reserveDone =
-                                (currentStep - pauseAt).coerceIn(0, reserveTotal)
-                            val atScheduleEnd = currentStep >= schedule
-
-                            // Reserve bar: subtle tracker under the preview
-                            // showing the position through the extra steps.
-                            SmoothLinearWavyProgressIndicator(
-                                progress = if (reserveTotal > 0) {
-                                    reserveDone.toFloat() / reserveTotal
-                                } else {
-                                    1f
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                            Text(
-                                stringResource(
-                                    R.string.stepping_step_position,
-                                    currentStep,
-                                    schedule,
-                                ),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            if (atScheduleEnd) {
-                                // Schedule end: Continue disappears — Finish
-                                // with a short auto-confirm countdown.
-                                SteppingAutoFinish(onSteppingDecision)
-                            } else {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(top = 8.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                ) {
-                                    Button(
-                                        onClick = { onSteppingDecision("confirm") },
-                                        modifier = Modifier.weight(1f),
-                                    ) {
-                                        Text(stringResource(R.string.stepping_finish))
-                                    }
-                                    OutlinedButton(
-                                        onClick = { onSteppingDecision("next") },
-                                        modifier = Modifier.weight(1f),
-                                    ) {
-                                        Text(stringResource(R.string.stepping_continue))
-                                    }
-                                    OutlinedButton(
-                                        onClick = {
-                                            runState.userRequestedAbort = true
-                                            onSteppingDecision("abort")
-                                        },
-                                    ) {
-                                        Text(stringResource(R.string.stepping_cancel))
-                                    }
-                                }
-                            }
                         }
                     }
                 }

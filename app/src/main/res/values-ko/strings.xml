@@ -124,10 +124,10 @@
     <string name="no_npu_models">모델 없음</string>
     <string name="img2img_hint">img2img 기능을 사용합니다. 필요하지 않거나 문제가 발생하면 끄세요. 끄면 SDXL 화면비 기능과 UltraFix도 비활성화됩니다.</string>
     <string name="preview_quality">생성 중 미리보기</string>
-    <string name="preview_quality_hint">끄기: 가장 빠름. 빠름: 매 스텝마다 근사 CPU 미리보기. 높은 품질: 중간 스텝을 실제 VAE로 디코딩(기존 \"생성 과정 표시\") — 느리며 NPU 모델 전용.</string>
+    <string name="preview_quality_hint">끄기: 가장 빠름. 빠름: 매 스텝마다 근사 CPU 미리보기. 전체: 중간 스텝을 실제 VAE로 디코딩(기존 \"생성 과정 표시\") — 느리며 NPU 모델 전용.</string>
     <string name="preview_quality_off">끄기</string>
     <string name="preview_quality_fast">빠름</string>
-    <string name="preview_quality_high">높은 품질</string>
+    <string name="preview_quality_high">전체</string>
     <string name="preview_stride">미리보기 간격</string>
     <plurals name="preview_stride_hint">
         <item quantity="other">미리보기를 %d 스텝마다 업데이트합니다(1~10).</item>

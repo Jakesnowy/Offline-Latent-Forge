@@ -128,10 +128,10 @@
     <string name="no_npu_models">No Models</string>
     <string name="img2img_hint">Use img2img feature. Turn off if you don\'t need or encounter any problems. Turning it off also disables SDXL aspect ratio and UltraFix.</string>
     <string name="preview_quality">Preview During Generation</string>
-    <string name="preview_quality_hint">Off: fastest. Fast: an approximate CPU preview on every step. High quality: real VAE decodes of intermediate steps — the old \"Show Generation Process\" — slower, NPU models only.</string>
+    <string name="preview_quality_hint">Off: fastest. Fast: an approximate CPU preview on every step. Full: real VAE decodes of intermediate steps — the old \"Show Generation Process\" — slower, NPU models only.</string>
     <string name="preview_quality_off">Off</string>
     <string name="preview_quality_fast">Fast</string>
-    <string name="preview_quality_high">High quality</string>
+    <string name="preview_quality_high">Full</string>
     <string name="preview_stride">Preview Stride</string>
     <plurals name="preview_stride_hint">
         <item quantity="one">Update preview every %d step (1–10).</item>

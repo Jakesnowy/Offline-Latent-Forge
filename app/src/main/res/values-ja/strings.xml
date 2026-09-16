@@ -124,10 +124,10 @@
     <string name="no_npu_models">モデルなし</string>
     <string name="img2img_hint">img2img機能を使用します。必要がない場合や問題が発生した場合はオフにしてください。オフにするとSDXLのアスペクト比指定とUltraFixも無効になります。</string>
     <string name="preview_quality">生成中のプレビュー</string>
-    <string name="preview_quality_hint">オフ：最速。高速：毎ステップの簡易 CPU プレビュー。高品質：中間ステップを実際の VAE でデコード（旧「生成プロセスを表示」）— 低速、NPU モデル専用。</string>
+    <string name="preview_quality_hint">オフ：最速。高速：毎ステップの簡易 CPU プレビュー。フル：中間ステップを実際の VAE でデコード（旧「生成プロセスを表示」）— 低速、NPU モデル専用。</string>
     <string name="preview_quality_off">オフ</string>
     <string name="preview_quality_fast">高速</string>
-    <string name="preview_quality_high">高品質</string>
+    <string name="preview_quality_high">フル</string>
     <string name="preview_stride">プレビューストライド</string>
     <plurals name="preview_stride_hint">
         <item quantity="other">%d ステップごとにプレビューを更新します (1 ～ 10)。</item>

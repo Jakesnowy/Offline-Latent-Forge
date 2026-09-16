@@ -1125,6 +1125,12 @@ inline GenerationResult Pipeline::generate(
     const bool stepping = req.generation_mode == "stepping" &&
                           req.pause_handler != nullptr;
 
+    // Progress ticks before this loop (CLIP, img2img encode / ultrafix
+    // inversion) share current_step; snapshot that base so completed_steps
+    // counts only the schedule steps actually executed below. Without this,
+    // txt2img reports steps+1 (img2img steps+2) as the run's step count.
+    const int pre_denoise_ticks = current_step;
+
     int i = start_step;
     while (i < (int)timesteps.size()) {
       // Pre-step preview: skipped in stepping mode (the pause after its
@@ -1315,10 +1321,12 @@ inline GenerationResult Pipeline::generate(
 
     endDenoise();
 
-    // Steps actually executed: the exit step for a stepping early exit,
-    // the schedule length for a natural completion. Captured before the
-    // post-decode progress tick below inflates current_step.
-    const int completed_steps = current_step;
+    // Schedule steps actually executed: the exit step for a stepping early
+    // exit, the schedule length for a natural completion. The pre-denoise
+    // progress ticks (CLIP, VAE encode) are excluded via the base snapshot
+    // taken before the loop. Captured before the post-decode progress tick
+    // below inflates current_step.
+    const int completed_steps = current_step - pre_denoise_ticks;
 
     // --- VAE Decode ---
     auto vae_dec_start = std::chrono::high_resolution_clock::now();
