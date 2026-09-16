@@ -6,6 +6,8 @@ only fork-side changes are listed below.
 
 ## [Unreleased]
 
+## [2.8.2] - 2026-09-16
+
 ### Changed
 - Light previews (Fast quality / stepping) use an L1 softening pass: robust
   1st/99th-percentile contrast bounds, a fixed tone curve, mild
@@ -14,13 +16,14 @@ only fork-side changes are listed below.
   (design doc §5.3). First device feedback: composition clearly improved;
   residual green skew and bilinear softness addressed with per-channel
   gains and a mild unsharp mask (L1.5 tuning knobs).
-- **Self-calibrating L2 light previews** (design doc §5.5): the engine fits
+- **Self-calibrating L2 light previews** (design doc §5.4): the engine fits
   a least-squares 4-channel linear color map against its own real VAE
   decodes (every final output and Full-quality preview is a training pair),
   then switches light previews from the ch0-2 heuristic to true-ish hues.
   Zero user workflow — calibration accrues across ~3 generations, persists
   per model, and falls back to L1.5 until ready (or on Anima, which has 16
-  latent channels).
+  latent channels). Fixed a pixel-layout bug that made first-pass
+  calibrated previews greyscale (planar CHW misread as interleaved RGB).
 
 ### Fixed
 - Generation history recorded one more step than the slider value (txt2img

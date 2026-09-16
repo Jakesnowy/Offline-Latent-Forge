@@ -2,7 +2,7 @@
 
 ## 1. What this project is
 
-**Latent Forge** (`io.github.jakesnowy.offlinelatentforge`, v2.8.1) is a community fork of [Local Dream](https://github.com/xororz/local-dream) (`io.github.xororz.localdream`) — an Android app that runs **Stable Diffusion image generation entirely on-device**, with a unique focus on **Snapdragon NPU (Hexagon) acceleration** via Qualcomm's QNN SDK. It also supports CPU (via Alibaba MNN) and GPU (OpenCL) inference. It supports **SD1.5** (NPU on Hexagon V68+), **SDXL** (NPU on Snapdragon 8 Gen 3+), plus upscaling (Real-ESRGAN / UltraSharp), inpainting, history management, and a device-to-device "remote host" mode. On top of upstream it adds privacy hardening (backup exclusion, authenticated host mode), verified downloads (SHA-256 + TOFU pinning), and the **generation modes** described in §6.
+**Latent Forge** (`io.github.jakesnowy.offlinelatentforge`, v2.8.2) is a community fork of [Local Dream](https://github.com/xororz/local-dream) (`io.github.xororz.localdream`) — an Android app that runs **Stable Diffusion image generation entirely on-device**, with a unique focus on **Snapdragon NPU (Hexagon) acceleration** via Qualcomm's QNN SDK. It also supports CPU (via Alibaba MNN) and GPU (OpenCL) inference. It supports **SD1.5** (NPU on Hexagon V68+), **SDXL** (NPU on Snapdragon 8 Gen 3+), plus upscaling (Real-ESRGAN / UltraSharp), inpainting, history management, and a device-to-device "remote host" mode. On top of upstream it adds privacy hardening (backup exclusion, authenticated host mode), verified downloads (SHA-256 + TOFU pinning), and the **generation modes** described in §6.
 
 ## 2. Tech stack & how to build/run
 
