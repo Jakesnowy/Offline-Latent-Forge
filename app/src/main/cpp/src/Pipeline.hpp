@@ -876,15 +876,23 @@ inline std::string Pipeline::renderPreview(const GenerationRequest &req,
 }
 
 // Light latent preview: approximate RGB rendered entirely on the CPU from the
-// latent channels — no NPU VAE roundtrip, so it costs ~1 ms and works even
+// latent channels — no NPU VAE roundtrip, so it costs a few ms and works even
 // when the VAE decoder is swapped out (lowram mode). The first three latent
-// channels are per-channel contrast-stretched into RGB (colors are
-// approximate by design; the composition is what matters), then
-// nearest-neighbor upscaled to the preview size. Used by the stepping
-// generation modes for per-step previews. Returns "" on failure.
+// channels are mapped into RGB with the L1 softening pass (design doc
+// §5.3): robust 1st/99th-percentile contrast bounds (a single outlier pixel
+// can no longer crush the histogram), a fixed tone curve via a 256-entry LUT,
+// and mild desaturation toward luma to tame the raw mapping's neon
+// saturation — then bilinear-upscaled to the preview size (colors remain an
+// approximation by design; the composition is what matters). Used by the
+// stepping generation modes for per-step previews. Returns "" on failure.
 inline std::string Pipeline::renderLightPreview(const GenerationRequest &req,
                                                 const xt::xarray<float> &latents) {
   try {
+    // L1 tuning constants (design doc §5.3) — adjust on device if needed.
+    constexpr float kPreviewGamma = 0.9f;         // <1 lifts midtones softly
+    constexpr float kPreviewDesaturation = 0.15f; // 0 = raw channel colors
+    constexpr int kPreviewJpegQuality = 85;
+
     xt::xarray<float> lat = latents;
     latentsToVae(lat);
     const auto shape = lat.shape();
@@ -892,35 +900,80 @@ inline std::string Pipeline::renderLightPreview(const GenerationRequest &req,
     const int lw = static_cast<int>(shape[3]);
     const int out_w = req.width;
     const int out_h = req.height;
-
-    // Per-channel min/max over channels 0..2 for the contrast stretch.
-    float mins[3] = {0.0f, 0.0f, 0.0f};
-    float maxs[3] = {0.0f, 0.0f, 0.0f};
+    const size_t n = static_cast<size_t>(lh) * lw;
     const float *data = lat.data();
+
+    // Robust contrast bounds: 1st/99th percentiles per channel instead of
+    // global min/max. nth_element is O(n) and the channel planes are small
+    // (4k-16k samples), so this stays well under a millisecond.
+    float lows[3] = {0.0f, 0.0f, 0.0f};
+    float highs[3] = {0.0f, 0.0f, 0.0f};
+    std::vector<float> vals;
+    vals.reserve(n);
     for (int c = 0; c < 3; ++c) {
-      float lo = data[static_cast<size_t>(c) * lh * lw];
-      float hi = lo;
-      for (int i = 1; i < lh * lw; ++i) {
-        float v = data[static_cast<size_t>(c) * lh * lw + i];
-        lo = std::min(lo, v);
-        hi = std::max(hi, v);
-      }
-      mins[c] = lo;
-      maxs[c] = hi;
+      vals.assign(data + static_cast<size_t>(c) * n,
+                  data + static_cast<size_t>(c + 1) * n);
+      auto percentile = [&](float q) {
+        size_t idx = static_cast<size_t>(q * static_cast<float>(n - 1));
+        std::nth_element(vals.begin(), vals.begin() + idx, vals.end());
+        return vals[idx];
+      };
+      lows[c] = percentile(0.01f);
+      highs[c] = percentile(0.99f);
+    }
+    const float inv_ranges[3] = {
+        1.0f / std::max(highs[0] - lows[0], 1e-3f),
+        1.0f / std::max(highs[1] - lows[1], 1e-3f),
+        1.0f / std::max(highs[2] - lows[2], 1e-3f),
+    };
+
+    // Tone curve as a LUT: the output is 8-bit anyway, so quantizing before
+    // the curve keeps per-pixel cost to a table lookup instead of a pow().
+    float curve[256];
+    for (int i = 0; i < 256; ++i) {
+      curve[i] = std::pow(static_cast<float>(i) / 255.0f, kPreviewGamma);
     }
 
     std::vector<uint8_t> out_data(3 * out_w * out_h);
     for (int y = 0; y < out_h; ++y) {
-      int sy = std::min(y * lh / out_h, lh - 1);
+      // Bilinear source coordinates, shared by all three channels.
+      const float fy = (out_h > 1)
+                           ? static_cast<float>(y) * (lh - 1) / (out_h - 1)
+                           : 0.0f;
+      const int y0 = static_cast<int>(fy);
+      const int y1 = std::min(y0 + 1, lh - 1);
+      const float ty = fy - y0;
       for (int x = 0; x < out_w; ++x) {
-        int sx = std::min(x * lw / out_w, lw - 1);
+        const float fx = (out_w > 1)
+                             ? static_cast<float>(x) * (lw - 1) / (out_w - 1)
+                             : 0.0f;
+        const int x0 = static_cast<int>(fx);
+        const int x1 = std::min(x0 + 1, lw - 1);
+        const float tx = fx - x0;
+
+        float norm[3];
         for (int c = 0; c < 3; ++c) {
-          float v = data[static_cast<size_t>(c) * lh * lw +
-                         static_cast<size_t>(sy) * lw + sx];
-          float norm = (v - mins[c]) /
-                       std::max(1e-6f, maxs[c] - mins[c]);
+          const float *ch = data + static_cast<size_t>(c) * n;
+          const float v =
+              ch[static_cast<size_t>(y0) * lw + x0] * (1.0f - tx) *
+                      (1.0f - ty) +
+              ch[static_cast<size_t>(y0) * lw + x1] * tx * (1.0f - ty) +
+              ch[static_cast<size_t>(y1) * lw + x0] * (1.0f - tx) * ty +
+              ch[static_cast<size_t>(y1) * lw + x1] * tx * ty;
+          const float t =
+              std::clamp((v - lows[c]) * inv_ranges[c], 0.0f, 1.0f);
+          norm[c] =
+              curve[static_cast<int>(t * 255.0f + 0.5f)];
+        }
+
+        // Mild desaturation toward luma softens the neon saturation.
+        const float luma =
+            0.299f * norm[0] + 0.587f * norm[1] + 0.114f * norm[2];
+        for (int c = 0; c < 3; ++c) {
+          const float softened =
+              luma + (norm[c] - luma) * (1.0f - kPreviewDesaturation);
           out_data[(static_cast<size_t>(y) * out_w + x) * 3 + c] =
-              static_cast<uint8_t>(std::clamp(norm * 255.0f, 0.0f, 255.0f));
+              static_cast<uint8_t>(std::clamp(softened * 255.0f, 0.0f, 255.0f));
         }
       }
     }
@@ -938,7 +991,7 @@ inline std::string Pipeline::renderLightPreview(const GenerationRequest &req,
       final_w = req.target_crop_width;
       final_h = req.target_crop_height;
     }
-    out_data = encodeJPEG(out_data, final_w, final_h, 70);
+    out_data = encodeJPEG(out_data, final_w, final_h, kPreviewJpegQuality);
     std::string image_str_result(out_data.begin(), out_data.end());
     return base64_encode(image_str_result);
   } catch (const std::exception &e) {

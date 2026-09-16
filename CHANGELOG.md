@@ -6,6 +6,13 @@ only fork-side changes are listed below.
 
 ## [Unreleased]
 
+### Changed
+- Light previews (Fast quality / stepping) use an L1 softening pass: robust
+  1st/99th-percentile contrast bounds, a fixed tone curve, mild
+  desaturation toward luma, bilinear upscaling, and JPEG q85 — taming the
+  raw latent-to-RGB mapping's "neon" look at the same few-ms CPU cost
+  (design doc §5.3).
+
 ### Fixed
 - Generation history recorded one more step than the slider value (txt2img
   steps+1, img2img +2): the engine's completed-step count included the
