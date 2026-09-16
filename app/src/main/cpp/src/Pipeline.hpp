@@ -5,7 +5,9 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <cstring>
+#include <fstream>
 #include <functional>
 #include <iostream>
 #include <memory>
@@ -308,6 +310,27 @@ class Pipeline {
   xt::xarray<float> decodeToPixels(const GenerationRequest &req,
                                    const xt::xarray<float> &latents,
                                    bool verbose);
+  // --- self-calibrating light preview (L2, design doc §5.5) ----------------
+  // Least-squares color map from the 5-dim [x0..x3, 1] VAE-space latent to
+  // true RGB, fit online: every full-frame VAE decode (final output, Full
+  // previews) is a free training pair via observeDecodePair, so calibration
+  // accrues as a side effect of normal generations. Until the minimum frame
+  // count is reached the light preview keeps the L1.5 channel-0-2 heuristic.
+  // SD/SDXL only — the design is fixed at 4 latent channels + bias; Anima
+  // (16 channels) keeps the fallback permanently.
+  static constexpr int kCalDims = 5;  // 4 latent channels + bias
+  static constexpr int kCalMinFrames = 3;
+  double cal_xx_[kCalDims][kCalDims] = {};
+  double cal_xy_[kCalDims][3] = {};
+  int cal_frames_ = 0;
+  bool cal_ready_ = false;
+  bool cal_loaded_ = false;
+  float cal_matrix_[3][kCalDims] = {};
+  void observeDecodePair(const xt::xarray<float> &vae_latents,
+                         const xt::xarray<float> &pixels);
+  bool trySolveCalibration();
+  void loadCalibration();
+  void saveCalibration() const;
   xt::xarray<float> runUnetTiled(const GenerationRequest &req,
                                  const xt::xarray<float> &latents_scaled,
                                  int timestep, bool skip_uncond,
@@ -595,6 +618,7 @@ inline xt::xarray<float> Pipeline::decodeToPixels(
     vaeDecode(req, vae_dec_in_vec.data(), vae_dec_out_pixels.data());
     std::vector<int> pixel_shape = {1, 3, req.height, req.width};
     xt::xarray<float> pixels = xt::adapt(vae_dec_out_pixels, pixel_shape);
+    observeDecodePair(latents, pixels);
     return pixels;
   }
 
@@ -651,7 +675,181 @@ inline xt::xarray<float> Pipeline::decodeToPixels(
               << " tiles processed and blended" << std::endl;
   }
 
+  observeDecodePair(latents, pixels);
   return pixels;
+}
+
+// --- self-calibrating light preview (L2) -----------------------------------
+
+// Records one (VAE-space latent, true decode) pair into the normal equations
+// of the light-preview color calibration. Every full-frame VAE decode is a
+// free training pair, so the fit accrues as a side effect of normal
+// generations; Full-quality previews accelerate it. Never throws and never
+// touches the decode result.
+inline void Pipeline::observeDecodePair(
+    const xt::xarray<float> &vae_latents,
+    const xt::xarray<float> &pixels) {
+  try {
+    if (latentChannels() != 4) return;  // fixed 5-dim design: SD/SDXL only
+    const auto &lshape = vae_latents.shape();
+    const auto &pshape = pixels.shape();
+    if (lshape.size() != 4 || pshape.size() != 4) return;
+    const int lh = static_cast<int>(lshape[2]);
+    const int lw = static_cast<int>(lshape[3]);
+    const int ph = static_cast<int>(pshape[2]);
+    const int pw = static_cast<int>(pshape[3]);
+    if (lh <= 0 || lw <= 0 || ph < lh || pw < lw) return;
+    const int bh = ph / lh;  // pixel rows per latent cell (8 for SD/SDXL)
+    const int bw = pw / lw;
+    const float *lat = vae_latents.data();
+    const float *pix = pixels.data();
+    const size_t plane = static_cast<size_t>(lh) * lw;
+
+    for (int ly = 0; ly < lh; ++ly) {
+      for (int lx = 0; lx < lw; ++lx) {
+        // Box-average the true decode over this latent cell; the decoder
+        // emits [-1,1], so map to [0,1] to match the fit's output space.
+        float y[3] = {0.0f, 0.0f, 0.0f};
+        for (int dy = 0; dy < bh; ++dy) {
+          const size_t prow =
+              static_cast<size_t>(ly * bh + dy) * pw + lx * bw;
+          for (int dx = 0; dx < bw; ++dx) {
+            const size_t pidx = (prow + dx) * 3;
+            y[0] += pix[pidx];
+            y[1] += pix[pidx + 1];
+            y[2] += pix[pidx + 2];
+          }
+        }
+        const float inv = 1.0f / static_cast<float>(bh * bw);
+        const float yv[3] = {(y[0] * inv + 1.0f) * 0.5f,
+                             (y[1] * inv + 1.0f) * 0.5f,
+                             (y[2] * inv + 1.0f) * 0.5f};
+
+        const size_t base = static_cast<size_t>(ly) * lw + lx;
+        const float x[kCalDims] = {lat[base], lat[plane + base],
+                                   lat[2 * plane + base],
+                                   lat[3 * plane + base], 1.0f};
+        for (int i = 0; i < kCalDims; ++i) {
+          for (int j = 0; j < kCalDims; ++j) {
+            cal_xx_[i][j] += x[i] * x[j];
+          }
+          for (int j = 0; j < 3; ++j) {
+            cal_xy_[i][j] += x[i] * yv[j];
+          }
+        }
+      }
+    }
+
+    ++cal_frames_;
+    if (cal_frames_ >= kCalMinFrames) {
+      trySolveCalibration();
+      saveCalibration();
+    }
+  } catch (const std::exception &e) {
+    QNN_WARN("Light preview calibration observe failed: %s", e.what());
+  }
+}
+
+// Solves the accumulated normal equations for the 5x3 color map (Gaussian
+// elimination with partial pivoting). Returns false when the system is
+// (near) singular — the fit is then not applied and the light preview keeps
+// the fallback mapping.
+inline bool Pipeline::trySolveCalibration() {
+  double a[kCalDims][kCalDims];
+  double b[kCalDims][3];
+  for (int i = 0; i < kCalDims; ++i) {
+    for (int j = 0; j < kCalDims; ++j) a[i][j] = cal_xx_[i][j];
+    for (int j = 0; j < 3; ++j) b[i][j] = cal_xy_[i][j];
+  }
+  for (int col = 0; col < kCalDims; ++col) {
+    int pivot = col;
+    for (int r = col + 1; r < kCalDims; ++r) {
+      if (std::abs(a[r][col]) > std::abs(a[pivot][col])) pivot = r;
+    }
+    if (std::abs(a[pivot][col]) < 1e-9) return false;
+    if (pivot != col) {
+      for (int j = 0; j < kCalDims; ++j) std::swap(a[col][j], a[pivot][j]);
+      for (int j = 0; j < 3; ++j) std::swap(b[col][j], b[pivot][j]);
+    }
+    for (int r = col + 1; r < kCalDims; ++r) {
+      const double f = a[r][col] / a[col][col];
+      for (int j = col; j < kCalDims; ++j) a[r][j] -= f * a[col][j];
+      for (int j = 0; j < 3; ++j) b[r][j] -= f * b[col][j];
+    }
+  }
+  float m[3][kCalDims];
+  for (int row = kCalDims - 1; row >= 0; --row) {
+    for (int j = 0; j < 3; ++j) {
+      double s = b[row][j];
+      for (int k = row + 1; k < kCalDims; ++k) s -= a[row][k] * m[j][k];
+      m[j][row] = static_cast<float>(s / a[row][row]);
+      if (!std::isfinite(m[j][row])) return false;
+    }
+  }
+  const bool was_ready = cal_ready_;
+  for (int j = 0; j < 3; ++j) {
+    for (int i = 0; i < kCalDims; ++i) cal_matrix_[j][i] = m[j][i];
+  }
+  cal_ready_ = true;
+  if (!was_ready) {
+    QNN_INFO("Light preview color calibration active (%d frames)",
+             cal_frames_);
+  }
+  return true;
+}
+
+// Persists the accumulated calibration statistics next to the model so the
+// fit survives engine restarts. Best-effort: any failure is silently
+// ignored (calibration simply restarts from zero).
+inline void Pipeline::saveCalibration() const {
+  try {
+    std::ofstream f(model_dir_ + "/light_preview_cal.bin",
+                    std::ios::binary | std::ios::trunc);
+    if (!f) return;
+    const uint32_t magic = 0x4C504332u;  // "LPC2"
+    const int32_t frames = cal_frames_;
+    f.write(reinterpret_cast<const char *>(&magic), sizeof(magic));
+    f.write(reinterpret_cast<const char *>(&frames), sizeof(frames));
+    f.write(reinterpret_cast<const char *>(cal_xx_), sizeof(cal_xx_));
+    f.write(reinterpret_cast<const char *>(cal_xy_), sizeof(cal_xy_));
+  } catch (...) {
+  }
+}
+
+// Restores previously accumulated calibration statistics (if any). Runs at
+// most once per pipeline instance, lazily from the light preview path.
+inline void Pipeline::loadCalibration() {
+  if (cal_loaded_) return;
+  cal_loaded_ = true;
+  try {
+    std::ifstream f(model_dir_ + "/light_preview_cal.bin", std::ios::binary);
+    if (!f) return;
+    uint32_t magic = 0;
+    int32_t frames = 0;
+    f.read(reinterpret_cast<char *>(&magic), sizeof(magic));
+    f.read(reinterpret_cast<char *>(&frames), sizeof(frames));
+    if (!f || magic != 0x4C504332u || frames < 0) return;
+    f.read(reinterpret_cast<char *>(cal_xx_), sizeof(cal_xx_));
+    f.read(reinterpret_cast<char *>(cal_xy_), sizeof(cal_xy_));
+    if (!f) {
+      // Partial file — reset and start over.
+      for (auto &row : cal_xx_) {
+        for (double &v : row) v = 0.0;
+      }
+      for (auto &row : cal_xy_) {
+        for (double &v : row) v = 0.0;
+      }
+      cal_frames_ = 0;
+      return;
+    }
+    cal_frames_ = frames;
+    if (cal_frames_ >= kCalMinFrames && trySolveCalibration()) {
+      QNN_INFO("Light preview color calibration loaded (%d frames)",
+               cal_frames_);
+    }
+  } catch (const std::exception &e) {
+    QNN_WARN("Light preview calibration load failed: %s", e.what());
+  }
 }
 
 // One full tiled UNet evaluation for ultrafix: runs the fixed-size UNet graph
@@ -877,14 +1075,16 @@ inline std::string Pipeline::renderPreview(const GenerationRequest &req,
 
 // Light latent preview: approximate RGB rendered entirely on the CPU from the
 // latent channels — no NPU VAE roundtrip, so it costs a few ms and works even
-// when the VAE decoder is swapped out (lowram mode). The first three latent
-// channels are mapped into RGB with the L1 softening pass (design doc
-// §5.3): robust 1st/99th-percentile contrast bounds (a single outlier pixel
-// can no longer crush the histogram), a fixed tone curve via a 256-entry LUT,
-// and mild desaturation toward luma to tame the raw mapping's neon
-// saturation — then bilinear-upscaled to the preview size (colors remain an
-// approximation by design; the composition is what matters). Used by the
-// stepping generation modes for per-step previews. Returns "" on failure.
+// when the VAE decoder is swapped out (lowram mode). Two mapping paths:
+// 1. Self-calibrating L2 (design doc §5.5): a least-squares 4-channel linear
+//    color map fitted online against real VAE decodes (see
+//    observeDecodePair) — true-ish hues, persists per model.
+// 2. L1.5 fallback until calibration is ready: the first three latent
+//    channels with percentile-clamped contrast, a fixed tone curve, mild
+//    desaturation, and anti-green gains — colors remain an approximation by
+//    design; the composition is what matters. Both paths bilinear-upscale to
+//    the preview size and pass a mild unsharp mask. Used by the stepping
+//    generation modes for per-step previews. Returns "" on failure.
 inline std::string Pipeline::renderLightPreview(const GenerationRequest &req,
                                                 const xt::xarray<float> &latents) {
   try {
@@ -900,6 +1100,9 @@ inline std::string Pipeline::renderLightPreview(const GenerationRequest &req,
     // Mild unsharp after bilinear; restores edge crispness lost to the
     // smoother resampling (0 disables).
     constexpr float kPreviewSharpen = 0.3f;
+    // L2: contrast bump for the fitted color map — least squares predicts
+    // the conditional mean, which shrinks extremes; this restores punch.
+    constexpr float kCalibratedContrast = 1.15f;
 
     xt::xarray<float> lat = latents;
     latentsToVae(lat);
@@ -911,23 +1114,48 @@ inline std::string Pipeline::renderLightPreview(const GenerationRequest &req,
     const size_t n = static_cast<size_t>(lh) * lw;
     const float *data = lat.data();
 
+    // Self-calibrating L2 (design doc §5.5): once enough real VAE decodes
+    // have been observed (and persisted per model), replace the ch0-2
+    // heuristic with the fitted 4-channel linear color map.
+    loadCalibration();
+    const bool calibrated = cal_ready_ && latentChannels() == 4;
+    std::vector<float> cal_rgb;
+    if (calibrated) {
+      cal_rgb.resize(3 * n);
+      for (size_t i = 0; i < n; ++i) {
+        const float x[kCalDims] = {data[i], data[n + i], data[2 * n + i],
+                                   data[3 * n + i], 1.0f};
+        for (int c = 0; c < 3; ++c) {
+          float v = 0.0f;
+          for (int d = 0; d < kCalDims; ++d) v += cal_matrix_[c][d] * x[d];
+          v = (v - 0.5f) * kCalibratedContrast + 0.5f;
+          cal_rgb[c * n + i] = std::clamp(v, 0.0f, 1.0f);
+        }
+      }
+    }
+
+    // Fallback-only setup (L1.5 heuristic): robust contrast bounds and the
+    // tone-curve LUT. The calibrated L2 path skips these entirely — its
+    // output is already approximately true color.
     // Robust contrast bounds: 1st/99th percentiles per channel instead of
     // global min/max. nth_element is O(n) and the channel planes are small
     // (4k-16k samples), so this stays well under a millisecond.
     float lows[3] = {0.0f, 0.0f, 0.0f};
     float highs[3] = {0.0f, 0.0f, 0.0f};
     std::vector<float> vals;
-    vals.reserve(n);
-    for (int c = 0; c < 3; ++c) {
-      vals.assign(data + static_cast<size_t>(c) * n,
-                  data + static_cast<size_t>(c + 1) * n);
-      auto percentile = [&](float q) {
-        size_t idx = static_cast<size_t>(q * static_cast<float>(n - 1));
-        std::nth_element(vals.begin(), vals.begin() + idx, vals.end());
-        return vals[idx];
-      };
-      lows[c] = percentile(0.01f);
-      highs[c] = percentile(0.99f);
+    if (!calibrated) {
+      vals.reserve(n);
+      for (int c = 0; c < 3; ++c) {
+        vals.assign(data + static_cast<size_t>(c) * n,
+                    data + static_cast<size_t>(c + 1) * n);
+        auto percentile = [&](float q) {
+          size_t idx = static_cast<size_t>(q * static_cast<float>(n - 1));
+          std::nth_element(vals.begin(), vals.begin() + idx, vals.end());
+          return vals[idx];
+        };
+        lows[c] = percentile(0.01f);
+        highs[c] = percentile(0.99f);
+      }
     }
     const float inv_ranges[3] = {
         1.0f / std::max(highs[0] - lows[0], 1e-3f),
@@ -960,34 +1188,49 @@ inline std::string Pipeline::renderLightPreview(const GenerationRequest &req,
         const float tx = fx - x0;
 
         float norm[3];
-        for (int c = 0; c < 3; ++c) {
-          const float *ch = data + static_cast<size_t>(c) * n;
-          const float v =
-              ch[static_cast<size_t>(y0) * lw + x0] * (1.0f - tx) *
-                      (1.0f - ty) +
-              ch[static_cast<size_t>(y0) * lw + x1] * tx * (1.0f - ty) +
-              ch[static_cast<size_t>(y1) * lw + x0] * (1.0f - tx) * ty +
-              ch[static_cast<size_t>(y1) * lw + x1] * tx * ty;
-          const float t =
-              std::clamp((v - lows[c]) * inv_ranges[c], 0.0f, 1.0f);
-          norm[c] =
-              curve[static_cast<int>(t * 255.0f + 0.5f)];
+        if (calibrated) {
+          // L2: fitted linear color map — approximately true hues per
+          // latent cell, so no percentile stretch, gains, or desaturation.
+          for (int c = 0; c < 3; ++c) {
+            const float *ch = cal_rgb.data() + static_cast<size_t>(c) * n;
+            norm[c] =
+                ch[static_cast<size_t>(y0) * lw + x0] * (1.0f - tx) *
+                        (1.0f - ty) +
+                ch[static_cast<size_t>(y0) * lw + x1] * tx * (1.0f - ty) +
+                ch[static_cast<size_t>(y1) * lw + x0] * (1.0f - tx) * ty +
+                ch[static_cast<size_t>(y1) * lw + x1] * tx * ty;
+          }
+        } else {
+          for (int c = 0; c < 3; ++c) {
+            const float *ch = data + static_cast<size_t>(c) * n;
+            const float v =
+                ch[static_cast<size_t>(y0) * lw + x0] * (1.0f - tx) *
+                        (1.0f - ty) +
+                ch[static_cast<size_t>(y0) * lw + x1] * tx * (1.0f - ty) +
+                ch[static_cast<size_t>(y1) * lw + x0] * (1.0f - tx) * ty +
+                ch[static_cast<size_t>(y1) * lw + x1] * tx * ty;
+            const float t =
+                std::clamp((v - lows[c]) * inv_ranges[c], 0.0f, 1.0f);
+            norm[c] = curve[static_cast<int>(t * 255.0f + 0.5f)];
+          }
+          // Per-channel gains counteract the green skew (see constants),
+          // then mild desaturation toward luma softens the neon saturation.
+          float gained[3];
+          for (int c = 0; c < 3; ++c) {
+            gained[c] =
+                std::clamp(norm[c] * kPreviewChannelGains[c], 0.0f, 1.0f);
+          }
+          const float luma =
+              0.299f * gained[0] + 0.587f * gained[1] + 0.114f * gained[2];
+          for (int c = 0; c < 3; ++c) {
+            const float softened =
+                luma + (gained[c] - luma) * (1.0f - kPreviewDesaturation);
+            norm[c] = std::clamp(softened, 0.0f, 1.0f);
+          }
         }
-
-        // Per-channel gains counteract the green skew (see constants), then
-        // mild desaturation toward luma softens the neon saturation.
-        float gained[3];
         for (int c = 0; c < 3; ++c) {
-          gained[c] =
-              std::clamp(norm[c] * kPreviewChannelGains[c], 0.0f, 1.0f);
-        }
-        const float luma =
-            0.299f * gained[0] + 0.587f * gained[1] + 0.114f * gained[2];
-        for (int c = 0; c < 3; ++c) {
-          const float softened =
-              luma + (gained[c] - luma) * (1.0f - kPreviewDesaturation);
           out_data[(static_cast<size_t>(y) * out_w + x) * 3 + c] =
-              static_cast<uint8_t>(std::clamp(softened * 255.0f, 0.0f, 255.0f));
+              static_cast<uint8_t>(std::clamp(norm[c] * 255.0f, 0.0f, 255.0f));
         }
       }
     }
