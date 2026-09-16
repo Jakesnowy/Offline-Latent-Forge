@@ -36,19 +36,14 @@ inline GenerationRequest parseGenerationRequest(const nlohmann::json &json,
   req.show_diffusion_process = json.value("show_diffusion_process", false);
   req.show_diffusion_stride = json.value("show_diffusion_stride", 1);
   // Light previews: approximate RGB rendered on the CPU from the latent
-  // channels (no NPU VAE roundtrip). Used by the app's stepping/sweep
+  // channels (no NPU VAE roundtrip). Used by the app's stepping
   // generation modes; forces per-step previews regardless of the stride.
   req.light_previews = json.value("light_previews", false);
-  // Generation mode (standard | stepping | sweep): stepping pauses after
-  // each step for the app's decision; sweep decodes checkpoint images.
+  // Generation mode (standard | stepping): stepping pauses after each step
+  // for the app's decision.
   req.generation_mode = json.value("generation_mode", "standard");
-  if (req.generation_mode != "standard" && req.generation_mode != "stepping" &&
-      req.generation_mode != "sweep")
+  if (req.generation_mode != "standard" && req.generation_mode != "stepping")
     req.generation_mode = "standard";
-  req.sweep_target = json.value("sweep_target", 0);
-  req.sweep_interval = json.value("sweep_interval", 0);
-  if (req.sweep_target < 0 || req.sweep_interval < 0)
-    throw std::invalid_argument("Invalid sweep_target/sweep_interval (>= 0)");
   // Stepping: the completed-step count at which pausing starts (the
   // user-visible step target); the schedule itself runs longer.
   req.pause_at = json.value("pause_at", 0);

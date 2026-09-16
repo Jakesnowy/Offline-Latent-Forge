@@ -43,6 +43,9 @@ class RunGenerationState {
     // caption and the auto-finish countdown at the schedule end.
     var steppingPauseAt by mutableIntStateOf(0)
     var steppingScheduleSteps by mutableIntStateOf(0)
+    // Set when the user taps Cancel on the stepping controls, so the
+    // resulting Error event surfaces as "cancelled" instead of an error.
+    var userRequestedAbort by mutableStateOf(false)
     var errorMessage by mutableStateOf<String?>(null)
     var isCheckingBackend by mutableStateOf(true)
 

@@ -39,3 +39,6 @@ desktop.ini
 # Code review working documents (not for public repo)
 codereview.md
 codereview_audit.md
+
+# Dormant code samples rescued from removals (see scraps/INDEX.md)
+scraps/

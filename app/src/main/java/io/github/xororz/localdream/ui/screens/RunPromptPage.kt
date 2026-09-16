@@ -150,6 +150,24 @@ internal fun RunPromptPage(
                         .putInt("sweep_interval", value)
                         .apply()
                 },
+                // Stepping pause point (-1 = no manual value yet; the auto
+                // default is derived from the step count — see
+                // steppingPausePoint). Moving the slider makes it manual.
+                pauseAt = context.getSharedPreferences(
+                    "app_prefs",
+                    Context.MODE_PRIVATE,
+                ).getInt("pause_at", -1),
+                pauseAtAuto = context.getSharedPreferences(
+                    "app_prefs",
+                    Context.MODE_PRIVATE,
+                ).getBoolean("pause_at_auto", true),
+                onPauseAtChange = { value ->
+                    context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+                        .edit()
+                        .putInt("pause_at", value)
+                        .putBoolean("pause_at_auto", false)
+                        .apply()
+                },
                 isSdxl = model?.usesFixedCanvas == true,
                 runOnCpu = model?.runOnCpu ?: false,
                 useImg2img = useImg2img,
@@ -491,7 +509,10 @@ internal fun RunPromptPage(
                                         Text(stringResource(R.string.stepping_continue))
                                     }
                                     OutlinedButton(
-                                        onClick = { onSteppingDecision("abort") },
+                                        onClick = {
+                                            runState.userRequestedAbort = true
+                                            onSteppingDecision("abort")
+                                        },
                                     ) {
                                         Text(stringResource(R.string.stepping_cancel))
                                     }

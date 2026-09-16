@@ -37,7 +37,8 @@
     <string name="gen_mode_standard">スタンダード</string>
     <string name="gen_mode_stepping">ステッピング</string>
     <string name="gen_mode_sweep">スイープ</string>
-    <string name="steps_reserve">ステップ数: %1$d (+%2$d 予備)</string>
+    <string name="steps_pause">ステップ数: %1$d (%2$d で一時停止、+%3$d 予備)</string>
+    <string name="pause_point">ステップ %d で一時停止</string>
     <string name="stepping_continue">続行</string>
     <string name="stepping_finish">完了</string>
     <string name="stepping_cancel">キャンセル</string>
@@ -45,6 +46,7 @@
     <string name="stepping_auto_finish">自動的に完了しています…</string>
     <string name="sweep_interval">間隔: %d</string>
     <string name="steps_range">ステップ数: %s</string>
+    <string name="generation_cancelled">生成をキャンセルしました</string>
     <string name="sdxl_lowram">SDXL 低メモリモード</string>
     <string name="sdxl_lowram_hint">SDXL 専用：各モデルを必要時にのみ読み込み、使用後に解放します。16GB 未満のデバイスでは有効化してください。生成途中のプレビューは無効になります。</string>
     <string name="anima_lowram">Anima 低メモリモード</string>
@@ -121,8 +123,11 @@
     <string name="no_cpu_models">モデルなし</string>
     <string name="no_npu_models">モデルなし</string>
     <string name="img2img_hint">img2img機能を使用します。必要がない場合や問題が発生した場合はオフにしてください。オフにするとSDXLのアスペクト比指定とUltraFixも無効になります。</string>
-    <string name="show_process">生成プロセスを表示</string>
-    <string name="show_process_hint">NPU モデル専用機能です。</string>
+    <string name="preview_quality">生成中のプレビュー</string>
+    <string name="preview_quality_hint">オフ：最速。高速：毎ステップの簡易 CPU プレビュー。高品質：中間ステップを実際の VAE でデコード（旧「生成プロセスを表示」）— 低速、NPU モデル専用。</string>
+    <string name="preview_quality_off">オフ</string>
+    <string name="preview_quality_fast">高速</string>
+    <string name="preview_quality_high">高品質</string>
     <string name="preview_stride">プレビューストライド</string>
     <plurals name="preview_stride_hint">
         <item quantity="other">%d ステップごとにプレビューを更新します (1 ～ 10)。</item>

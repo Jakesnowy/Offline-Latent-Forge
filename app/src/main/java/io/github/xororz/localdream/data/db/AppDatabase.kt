@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [HistoryEntity::class],
-    version = 5,
+    version = 6,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -90,11 +90,22 @@ abstract class AppDatabase : RoomDatabase() {
         }
 
         // v4 -> v5: add the optional full-schedule step count (stepping
-        // early exits and sweep checkpoints record their schedule length).
+        // early exits record their schedule length).
         private val MIGRATION_4_5 = object : Migration(4, 5) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(
                     "ALTER TABLE generation_history ADD COLUMN scheduleSteps INTEGER",
+                )
+            }
+        }
+
+        // v5 -> v6: add the optional stepping pause point (the completed-step
+        // count at which the engine started pausing), so reproduce can
+        // restore the full pause configuration.
+        private val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE generation_history ADD COLUMN pauseAt INTEGER",
                 )
             }
         }
@@ -105,7 +116,7 @@ abstract class AppDatabase : RoomDatabase() {
                 AppDatabase::class.java,
                 "local_dream.db",
             )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                 // No destructive fallback: a future schema bump without a
                 // matching migration should fail loudly at open time rather
                 // than silently dropping the user's whole generation history.

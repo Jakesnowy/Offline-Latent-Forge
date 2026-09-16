@@ -423,10 +423,23 @@ internal fun ModelSettingsScreen(
                                 },
                             )
                         }
-                        var showProcess by remember {
-                            mutableStateOf(
-                                preferences.getBoolean("show_diffusion_process", false),
-                            )
+                        var previewQuality by remember {
+                            // One-time migration from the old
+                            // show_diffusion_process switch (mirrored in the
+                            // generation service): on mapped to "high".
+                            val legacy =
+                                preferences.getString("preview_quality", null)
+                            val initial = legacy ?: if (
+                                preferences.getBoolean("show_diffusion_process", false)
+                            ) {
+                                "high"
+                            } else {
+                                "fast"
+                            }
+                            if (legacy == null) {
+                                preferences.edit { putString("preview_quality", initial) }
+                            }
+                            mutableStateOf(initial)
                         }
                         var captureLogs by remember {
                             mutableStateOf(
@@ -590,26 +603,69 @@ internal fun ModelSettingsScreen(
                         HorizontalDivider(
                             modifier = Modifier.padding(horizontal = 16.dp),
                         )
-                        SwitchSettingRow(
-                            title = stringResource(R.string.show_process),
-                            description = stringResource(R.string.show_process_hint),
-                            checked = showProcess,
-                            onCheckedChange = {
-                                showProcess = it
-                                preferences.edit {
-                                    putBoolean("show_diffusion_process", it)
-                                }
-                            },
-                        )
-                        AnimatedVisibility(visible = showProcess) {
-                            Column {
-                                HorizontalDivider(
-                                    modifier = Modifier.padding(horizontal = 16.dp),
+                        // Preview quality: Off / Fast (CPU light previews) /
+                        // High quality (full VAE decodes). Fast is the
+                        // default — a live approximate preview for every
+                        // standard run without the VAE cost; High is the old
+                        // "Show Generation Process" switch.
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                        ) {
+                            Text(
+                                text = stringResource(R.string.preview_quality),
+                                style = MaterialTheme.typography.titleSmall,
+                            )
+                            Text(
+                                text = stringResource(R.string.preview_quality_hint),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(
+                                    ButtonGroupDefaults.ConnectedSpaceBetween,
+                                ),
+                            ) {
+                                val qualityOptions = listOf(
+                                    "off" to R.string.preview_quality_off,
+                                    "fast" to R.string.preview_quality_fast,
+                                    "high" to R.string.preview_quality_high,
                                 )
+                                qualityOptions.forEachIndexed { index, (id, label) ->
+                                    val shapes = when (index) {
+                                        0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
+
+                                        qualityOptions.lastIndex ->
+                                            ButtonGroupDefaults.connectedTrailingButtonShapes()
+
+                                        else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
+                                    }
+                                    ToggleButton(
+                                        checked = previewQuality == id,
+                                        onCheckedChange = { checked ->
+                                            if (checked) {
+                                                previewQuality = id
+                                                preferences.edit {
+                                                    putString("preview_quality", id)
+                                                }
+                                            }
+                                        },
+                                        shapes = shapes,
+                                        modifier = Modifier.weight(1f),
+                                    ) {
+                                        Text(stringResource(label))
+                                    }
+                                }
+                            }
+                            AnimatedVisibility(visible = previewQuality == "high") {
                                 Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(16.dp),
+                                        .padding(top = 8.dp),
                                 ) {
                                     var stride by remember {
                                         mutableFloatStateOf(

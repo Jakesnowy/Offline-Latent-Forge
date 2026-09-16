@@ -39,7 +39,8 @@
     <string name="gen_mode_standard">Standard</string>
     <string name="gen_mode_stepping">Stepping</string>
     <string name="gen_mode_sweep">Sweep</string>
-    <string name="steps_reserve">Steps: %1$d (+%2$d reserve)</string>
+    <string name="steps_pause">Steps: %1$d (pauses at %2$d, +%3$d reserve)</string>
+    <string name="pause_point">Pauses at step %d</string>
     <string name="stepping_continue">Continue</string>
     <string name="stepping_finish">Finish</string>
     <string name="stepping_cancel">Cancel</string>
@@ -47,6 +48,7 @@
     <string name="stepping_auto_finish">Finishing automatically…</string>
     <string name="sweep_interval">Interval: %d</string>
     <string name="steps_range">Steps: %s</string>
+    <string name="generation_cancelled">Generation cancelled</string>
     <string name="sdxl_lowram">SDXL low RAM mode</string>
     <string name="sdxl_lowram_hint">For SDXL only: load each model on demand and free it after use. Required on devices with less than 16GB RAM. Disables in-progress preview.</string>
     <string name="anima_lowram">Anima low RAM mode</string>
@@ -125,8 +127,11 @@
     <string name="no_cpu_models">No Models</string>
     <string name="no_npu_models">No Models</string>
     <string name="img2img_hint">Use img2img feature. Turn off if you don\'t need or encounter any problems. Turning it off also disables SDXL aspect ratio and UltraFix.</string>
-    <string name="show_process">Show Generation Process</string>
-    <string name="show_process_hint">Only works for NPU models. Show intermediate generation steps. This will slow down generation speed. Enable only when curious about the process.</string>
+    <string name="preview_quality">Preview During Generation</string>
+    <string name="preview_quality_hint">Off: fastest. Fast: an approximate CPU preview on every step. High quality: real VAE decodes of intermediate steps — the old \"Show Generation Process\" — slower, NPU models only.</string>
+    <string name="preview_quality_off">Off</string>
+    <string name="preview_quality_fast">Fast</string>
+    <string name="preview_quality_high">High quality</string>
     <string name="preview_stride">Preview Stride</string>
     <plurals name="preview_stride_hint">
         <item quantity="one">Update preview every %d step (1–10).</item>

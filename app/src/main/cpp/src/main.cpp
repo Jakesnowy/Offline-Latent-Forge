@@ -577,6 +577,11 @@ static void registerGenerateEndpoint(httplib::Server &svr, Pipeline *pipeline,
               // sink connection is polled while waiting — a dead client
               // aborts the run.
               if (req->generation_mode == "stepping") {
+                if (req->pause_at >= req->steps) {
+                  std::cout << "WARNING: pause_at >= steps; stepping mode "
+                               "will not pause"
+                            << std::endl;
+                }
                 req->pause_handler = [&sink](int) -> int {
                   while (true) {
                     int d = g_pause_decision.exchange(-1);
@@ -585,18 +590,6 @@ static void registerGenerateEndpoint(httplib::Server &svr, Pipeline *pipeline,
                     std::this_thread::sleep_for(
                         std::chrono::milliseconds(200));
                   }
-                };
-              }
-              if (req->generation_mode == "sweep") {
-                req->sweep_handler = [&sink](int index, int total,
-                                             const std::string &b64) {
-                  nlohmann::json s = {{"type", "sweep"},
-                                      {"index", index},
-                                      {"total", total},
-                                      {"image", b64},
-                                      {"format", "jpeg"}};
-                  std::string ev = "event: sweep\ndata: " + s.dump() + "\n\n";
-                  sink.write(ev.c_str(), ev.size());
                 };
               }
               // Drop any decision left over from a previous run (e.g. a

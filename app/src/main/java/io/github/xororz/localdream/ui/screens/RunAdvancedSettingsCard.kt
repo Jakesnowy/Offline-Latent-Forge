@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ButtonGroupDefaults
@@ -57,6 +58,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.github.xororz.localdream.R
@@ -86,6 +88,9 @@ internal fun RunAdvancedSettingsCard(
     onGenerationModeChange: (String) -> Unit,
     sweepInterval: Int,
     onSweepIntervalChange: (Int) -> Unit,
+    pauseAt: Int,
+    pauseAtAuto: Boolean,
+    onPauseAtChange: (Int) -> Unit,
     isSdxl: Boolean,
     runOnCpu: Boolean,
     useImg2img: Boolean,
@@ -203,53 +208,6 @@ internal fun RunAdvancedSettingsCard(
                 }
             }
 
-            // Generation mode: standard (default), stepping (watch the
-            // composition form step by step, then keep / extend / discard),
-            // or sweep (the same seed rendered at 1/3, 2/3 and the full step
-            // count). Styled after the dark mode selection.
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    stringResource(R.string.generation_mode),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(
-                        ButtonGroupDefaults.ConnectedSpaceBetween,
-                    ),
-                ) {
-                    val modeOptions = listOf(
-                        "standard" to R.string.gen_mode_standard,
-                        "stepping" to R.string.gen_mode_stepping,
-                        "sweep" to R.string.gen_mode_sweep,
-                    )
-                    modeOptions.forEachIndexed { index, (id, label) ->
-                        val shapes = when (index) {
-                            0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
-                            modeOptions.lastIndex ->
-                                ButtonGroupDefaults.connectedTrailingButtonShapes()
-
-                            else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
-                        }
-                        ToggleButton(
-                            checked = activeMode == id,
-                            onCheckedChange = { checked ->
-                                if (checked) {
-                                    selectedMode = id
-                                    onGenerationModeChange(id)
-                                }
-                            },
-                            shapes = shapes,
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            Text(stringResource(label))
-                        }
-                    }
-                }
-            }
-
             // Steps and CFG are the least advanced of the advanced settings,
             // so they stay on the card face (visible while collapsed) for
             // quick adjustment; the rest lives behind the expander.
@@ -271,14 +229,27 @@ internal fun RunAdvancedSettingsCard(
                                     "${t + 2 * sweepInterval}",
                                 )
                             }
+
                             "stepping" -> {
-                                // Stepping: the schedule quietly extends by a
-                                // proportional reserve (see startGeneration);
-                                // the user exits early or rides it to the end.
+                                // Stepping: the schedule is the user's step
+                                // count; the engine pauses at the pause point
+                                // (auto default: steps minus the reserve) and
+                                // after every later step (see startGeneration).
                                 val t = steps.roundToInt()
-                                val reserve = (t / 4.0).roundToInt().coerceIn(2, 10)
-                                stringResource(R.string.steps_reserve, t, reserve)
+                                val pause =
+                                    steppingPausePoint(t, pauseAt, pauseAtAuto)
+                                if (t >= 3) {
+                                    stringResource(
+                                        R.string.steps_pause,
+                                        t,
+                                        pause,
+                                        t - pause,
+                                    )
+                                } else {
+                                    stringResource(R.string.steps, t)
+                                }
                             }
+
                             else -> stringResource(R.string.steps, steps.roundToInt())
                         },
                         style = MaterialTheme.typography.bodyMedium,
@@ -290,6 +261,30 @@ internal fun RunAdvancedSettingsCard(
                         steps = 48,
                         modifier = Modifier.fillMaxWidth(),
                     )
+                }
+                if (activeMode == "stepping" && steps.roundToInt() >= 3) {
+                    // Pause point: where the engine starts pausing (and the
+                    // reserve begins). Auto-managed unless the user moves it;
+                    // the reserve is whatever remains up to the step count.
+                    val t = steps.roundToInt()
+                    val pausePoint = steppingPausePoint(t, pauseAt, pauseAtAuto)
+                    Column {
+                        Text(
+                            stringResource(R.string.pause_point, pausePoint),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Slider(
+                            value = pausePoint.toFloat(),
+                            onValueChange = { value ->
+                                onPauseAtChange(
+                                    value.roundToInt().coerceIn(2, t - 1),
+                                )
+                            },
+                            valueRange = 2f..(t - 1).coerceAtLeast(2).toFloat(),
+                            steps = (t - 4).coerceAtLeast(0),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
                 }
                 if (activeMode == "sweep") {
                     // Sweep interval: how many steps between checkpoint
@@ -344,6 +339,78 @@ internal fun RunAdvancedSettingsCard(
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
+                    // Generation mode: standard (default), stepping (watch the
+                    // composition form step by step, then keep / extend /
+                    // discard — an experimental tool, hence the muted flask
+                    // styling), or sweep (the same seed rendered at three step
+                    // counts). Styled after the dark mode selection.
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            stringResource(R.string.generation_mode),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(
+                                ButtonGroupDefaults.ConnectedSpaceBetween,
+                            ),
+                        ) {
+                            val modeOptions = listOf(
+                                "standard" to R.string.gen_mode_standard,
+                                "stepping" to R.string.gen_mode_stepping,
+                                "sweep" to R.string.gen_mode_sweep,
+                            )
+                            modeOptions.forEachIndexed { index, (id, label) ->
+                                val shapes = when (index) {
+                                    0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
+
+                                    modeOptions.lastIndex ->
+                                        ButtonGroupDefaults.connectedTrailingButtonShapes()
+
+                                    else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
+                                }
+                                ToggleButton(
+                                    checked = activeMode == id,
+                                    onCheckedChange = { checked ->
+                                        if (checked) {
+                                            selectedMode = id
+                                            onGenerationModeChange(id)
+                                        }
+                                    },
+                                    shapes = shapes,
+                                    // Stepping is an experimental tool: keep
+                                    // it visually muted so it never reads as
+                                    // a peer of the standard workflow.
+                                    modifier = if (id == "stepping") {
+                                        Modifier
+                                            .weight(1f)
+                                            .alpha(0.75f)
+                                    } else {
+                                        Modifier.weight(1f)
+                                    },
+                                ) {
+                                    if (id == "stepping") {
+                                        Icon(
+                                            imageVector = Icons.Default.Science,
+                                            contentDescription = null,
+                                            modifier = Modifier
+                                                .size(16.dp)
+                                                .padding(end = 2.dp),
+                                        )
+                                        Text(
+                                            stringResource(label),
+                                            textDecoration =
+                                                TextDecoration.LineThrough,
+                                        )
+                                    } else {
+                                        Text(stringResource(label))
+                                    }
+                                }
+                            }
+                        }
+                    }
                     // Aspect ratio needs the VAE encoder (inpaint-based padding),
                     // which --no_img2img does not load.
                     if (isSdxl && useImg2img) {

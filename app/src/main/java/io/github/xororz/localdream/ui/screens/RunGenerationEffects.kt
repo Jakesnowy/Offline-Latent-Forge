@@ -6,6 +6,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.res.stringResource
+import io.github.xororz.localdream.R
 import io.github.xororz.localdream.data.GenerationMode
 import io.github.xororz.localdream.data.HistoryItem
 import io.github.xororz.localdream.data.HistoryManager
@@ -42,6 +44,7 @@ internal fun RunGenerationEffects(
     coroutineScope: CoroutineScope,
 ) {
     val serviceState by BackgroundGenerationService.generationState.collectAsState()
+    val msgGenerationCancelled = stringResource(R.string.generation_cancelled)
     LaunchedEffect(serviceState) {
 
         when (val state = serviceState) {
@@ -117,13 +120,8 @@ internal fun RunGenerationEffects(
                     // forwarded to both the snapshot and the currently-displayed marker
                     // so handleSaveImage can later confirm the user is still looking at
                     // this generation (and not a different history thumbnail).
-                    // Sweep mode: the intermediate checkpoint images are saved
-                    // first (each at its own step count), then the final.
                     coroutineScope.launch(Dispatchers.IO) {
                         val toSave = buildList {
-                            state.sweepImages.forEach {
-                                add(it.bitmap to it.steps)
-                            }
                             add(state.bitmap to newParams.steps)
                         }
                         var lastSaved: HistoryItem? = null
@@ -189,7 +187,16 @@ internal fun RunGenerationEffects(
 
             is GenerationState.Error -> {
                 resultState.intermediateBitmap = null
-                runState.errorMessage = state.message
+                // A stepping abort is a deliberate user action (the engine
+                // throws "Cancelled in stepping mode"), not a failure — show
+                // the cancelled message instead of the raw error.
+                runState.errorMessage =
+                    if (runState.userRequestedAbort) {
+                        msgGenerationCancelled
+                    } else {
+                        state.message
+                    }
+                runState.userRequestedAbort = false
                 runState.isRunning = false
                 runState.paused = false
                 runState.progress = 0f

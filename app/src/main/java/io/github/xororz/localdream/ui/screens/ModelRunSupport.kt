@@ -530,6 +530,27 @@ internal fun ultrafixDenoiseStrength(denoiseSteps: Int, totalSteps: Int): Float 
     return ((clamped - 0.5f) / totalSteps).coerceIn(0f, 1f)
 }
 
+/**
+ * Stepping pause point (see startGeneration): the completed-step count at
+ * which the engine starts pausing. Auto default = userSteps minus the
+ * proportional reserve (steps/4, clamped to 2..10 — a 4-step DMD2 run gets
+ * +2, a 50-step run +10), clamped to the slider range 2..steps-1 so at least
+ * one reserve step remains. A manual value is clamped the same way; below
+ * three steps there is no meaningful reserve and the run simply never pauses
+ * (pause_at >= steps disables pausing in the engine).
+ */
+internal fun steppingPausePoint(steps: Int, manualPause: Int, isAuto: Boolean): Int {
+    if (isAuto) return steppingAutoPause(steps)
+    val max = (steps - 1).coerceAtLeast(2)
+    return manualPause.coerceIn(2, max)
+}
+
+internal fun steppingAutoPause(steps: Int): Int {
+    if (steps < 3) return steps
+    val reserve = (steps / 4.0).roundToInt().coerceIn(2, 10)
+    return (steps - reserve).coerceIn(2, steps - 1)
+}
+
 @Immutable
 data class GenerationParameters(
     val steps: Int,
@@ -548,7 +569,10 @@ data class GenerationParameters(
     // NSFW classifier score from the with_filter build; null otherwise.
     val nsfwScore: Float? = null,
     // Full schedule length when this run ended before consuming the whole
-    // schedule (stepping early exit, sweep checkpoint); null otherwise.
+    // schedule (stepping early exit); null otherwise.
     // Drives the "~" steps display and reproduce-at-full-quality.
     val scheduleSteps: Int? = null,
+    // Stepping pause point used by this run (null for other modes); recorded
+    // so reproduce can restore both the schedule length and the pause point.
+    val pauseAt: Int? = null,
 )

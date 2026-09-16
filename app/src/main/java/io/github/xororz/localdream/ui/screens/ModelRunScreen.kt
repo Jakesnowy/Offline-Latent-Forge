@@ -101,6 +101,7 @@ import io.github.xororz.localdream.utils.reportImage
 import io.github.xororz.localdream.utils.saveImage
 import java.io.File
 import kotlin.math.roundToInt
+import kotlin.random.Random
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -1521,6 +1522,9 @@ fun ModelRunScreen(
             "ModelRunScreen",
             "start generation batch: ${runState.batchCounts} times",
         )
+        // Fresh run: clear any abort flag left over from a previous
+        // stepping cancel.
+        runState.userRequestedAbort = false
 
         val generationMode = context.getSharedPreferences(
             "app_prefs",
@@ -1537,42 +1541,55 @@ fun ModelRunScreen(
             "start generation batch: ${runState.batchCounts} times (mode: $generationMode)",
         )
 
-        // Run plan: standard = N runs at the selected step count (batch);
-        // sweep = ONE run whose schedule extends to target + 2*interval steps,
-        // with full-quality checkpoint decodes at target, target+interval and
-        // the schedule end (a step-range comparison along one seed — see
-        // Pipeline's sweep checkpoints). Stepping = a single run whose
-        // schedule secretly extends past the user's step count by a reserve
-        // of extra steps; the engine pauses at the user's count (and after
-        // each reserve step) so the user can finish early or continue
-        // through real schedule steps that strictly refine the estimate.
+        // Run plan (remediation 2026-09-15):
+        // - Standard = the selected batch count at the user's step count.
+        // - Sweep = THREE consecutive runs at userSteps, userSteps+interval
+        //   and userSteps+2*interval, all with the SAME seed (resolved up
+        //   front when the seed field is blank) so the only variable between
+        //   the images is the step count. Plain runs through the existing
+        //   batch machinery — the engine has no sweep special case.
+        // - Stepping = ONE run of userSteps steps total; the engine pauses at
+        //   the pause point (a user-adjustable slider whose auto default is
+        //   userSteps minus the reserve) and after every later step, so the
+        //   user can finish early or continue through real schedule steps
+        //   that strictly refine the estimate.
         val userSteps = runState.steps.roundToInt()
-        // Reserve size: proportional with a cap — a 4-step DMD2 run gets
-        // +2, a 50-step run gets +10.
-        val steppingReserve = (userSteps / 4.0).roundToInt().coerceIn(2, 10)
-        val runSteps: Int = when (generationMode) {
-            "sweep" -> userSteps + 2 * sweepIntervalPref
-            "stepping" -> userSteps + steppingReserve
-            else -> userSteps
-        }
-        val pauseAtValue = if (generationMode == "stepping") userSteps else 0
-        runState.steppingPauseAt = pauseAtValue
-        runState.steppingScheduleSteps =
-            if (generationMode == "stepping") runSteps else 0
-        val sweepTargetValue = if (generationMode == "sweep") {
-            runState.steps.roundToInt()
+        val stepping = generationMode == "stepping"
+        val sweeping = generationMode == "sweep"
+
+        val prefs = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+        val pausePoint = if (stepping) {
+            steppingPausePoint(
+                steps = userSteps,
+                manualPause = prefs.getInt("pause_at", -1),
+                isAuto = prefs.getBoolean("pause_at_auto", true),
+            )
         } else {
             0
         }
+        runState.steppingPauseAt = pausePoint
+        runState.steppingScheduleSteps = if (stepping) userSteps else 0
+
+        // Sweep with a blank seed: resolve ONE seed up front and send it
+        // explicitly on all three runs — otherwise each run would get a
+        // different engine-chosen seed and the comparison would be meaningless.
+        val sweepSeed: Long? = if (sweeping && runState.seed.isBlank()) {
+            Random.nextLong()
+        } else {
+            null
+        }
 
         batchGenerationJob = coroutineScope.launch {
-            val actualBatchCount =
-                if (generationMode != "standard" || runState.seed.isNotBlank()) {
-                    1
-                } else {
-                    runState.batchCounts
-                }
+            val actualBatchCount = when {
+                stepping -> 1
+                sweeping -> 3
+                runState.seed.isNotBlank() -> 1
+                else -> runState.batchCounts
+            }
             for (i in 0 until actualBatchCount) {
+                // Sweep: this run's position on the step ladder (S, S+i, S+2i).
+                val runSteps =
+                    if (sweeping) userSteps + i * sweepIntervalPref else userSteps
                 runState.currentBatchIndex = i + 1
                 Log.d(
                     "ModelRunScreen",
@@ -1594,7 +1611,8 @@ fun ModelRunScreen(
                     denoiseStrength = runState.denoiseStrength,
                     useOpenCL = runState.useOpenCL,
                     scheduler = runState.scheduler,
-                    scheduleSteps = if (generationMode != "standard") runSteps else null,
+                    scheduleSteps = if (stepping) userSteps else null,
+                    pauseAt = if (stepping) pausePoint else null,
                 )
 
                 val batchIntent = Intent(
@@ -1608,17 +1626,14 @@ fun ModelRunScreen(
                     )
                     putExtra("steps", runSteps)
                     putExtra("cfg", runState.cfg)
-                    runState.seed.toLongOrNull()
+                    // Seed: explicit when the user set one; for a sweep with a
+                    // blank seed field, the single seed resolved up front (all
+                    // three runs must share it).
+                    (runState.seed.toLongOrNull() ?: sweepSeed)
                         ?.let { putExtra("seed", it) }
-                    if (generationMode == "sweep") {
-                        putExtra("sweep_target", sweepTargetValue)
-                        putExtra("sweep_interval", sweepIntervalPref)
-                    }
-                    if (generationMode == "stepping") {
-                        putExtra("pause_at", pauseAtValue)
-                    }
-                    if (generationMode != "standard") {
-                        putExtra("generation_mode", generationMode)
+                    if (stepping) {
+                        putExtra("pause_at", pausePoint)
+                        putExtra("generation_mode", "stepping")
                     }
                     putExtra("width", setupState.currentWidth)
                     putExtra("height", setupState.currentHeight)

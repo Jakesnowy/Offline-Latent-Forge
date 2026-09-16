@@ -213,6 +213,7 @@ object HistoryBackup {
         e.upscalerId?.let { put("upscalerId", it) }
         put("steps", e.steps)
         e.scheduleSteps?.let { put("scheduleSteps", it) }
+        e.pauseAt?.let { put("pauseAt", it) }
         put("cfg", e.cfg.toDouble())
         e.seed?.let { put("seed", it) }
         put("prompt", e.prompt)
@@ -246,6 +247,11 @@ object HistoryBackup {
             steps = json.optInt("steps", 20),
             scheduleSteps = if (json.has("scheduleSteps") && !json.isNull("scheduleSteps")) {
                 json.optInt("scheduleSteps")
+            } else {
+                null
+            },
+            pauseAt = if (json.has("pauseAt") && !json.isNull("pauseAt")) {
+                json.optInt("pauseAt")
             } else {
                 null
             },

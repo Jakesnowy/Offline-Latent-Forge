@@ -47,6 +47,10 @@ data class HistoryEntity(
     val nsfwScore: Float? = null,
 
     // Full schedule length when the run ended before consuming the whole
-    // schedule (stepping early exit, sweep checkpoint); null otherwise.
+    // schedule (stepping early exit); null otherwise.
     val scheduleSteps: Int? = null,
+
+    // Stepping pause point used by this run (the completed-step count at
+    // which the engine started pausing); null for other modes.
+    val pauseAt: Int? = null,
 )

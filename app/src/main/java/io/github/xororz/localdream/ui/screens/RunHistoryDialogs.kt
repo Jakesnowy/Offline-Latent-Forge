@@ -1,5 +1,6 @@
 package io.github.xororz.localdream.ui.screens
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.widget.Toast
@@ -294,15 +295,25 @@ internal fun RunHistoryDialogs(
                             ultrafixState.ultrafixDenoiseSteps.coerceIn(0, maxDenoiseSteps)
                     } else {
                         // Reproduce at the FULL schedule length when the entry
-                        // was an early exit (stepping/sweep): same seed on the
-                        // complete schedule shares the exact trajectory the
-                        // user approved and carries it to maximum quality.
+                        // was a stepping early exit: same seed on the complete
+                        // schedule shares the exact trajectory the user
+                        // approved and carries it to maximum quality. The
+                        // recorded pause point is restored too (as a manual
+                        // pause) so the resumed run pauses where the original
+                        // one did; entries without one keep the auto default.
                         runState.steps = (
                             params.scheduleSteps ?: params.steps
                             ).toFloat().coerceIn(
                             GenerationDefaults.STEPS_RANGE_MIN,
                             GenerationDefaults.STEPS_RANGE_MAX,
                         )
+                        if (params.pauseAt != null) {
+                            context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+                                .edit()
+                                .putInt("pause_at", params.pauseAt)
+                                .putBoolean("pause_at_auto", false)
+                                .apply()
+                        }
                     }
                 }
                 if (ParamShareField.CFG in selectedFields) {

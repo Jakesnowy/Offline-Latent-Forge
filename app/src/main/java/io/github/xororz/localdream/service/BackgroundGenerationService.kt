@@ -104,39 +104,23 @@ class BackgroundGenerationService : Service() {
             val paused: Boolean = false,
         ) : GenerationState()
 
-        // One decoded image from a sweep run's checkpoint (steps = the step
-        // count the image represents).
-        data class SweepImage(val bitmap: Bitmap, val steps: Int)
-
         data class Complete(
             val bitmap: Bitmap,
             val seed: Long?,
             // NSFW classifier score from the with_filter build; null when the
             // basic build ran (no safety checker, nothing to show).
             val nsfwScore: Float? = null,
-            // Sweep mode: the checkpoint images decoded before the final one
-            // (their step counts differ from the final image's).
-            val sweepImages: List<SweepImage> = emptyList(),
             // Schedule steps the engine actually executed: the exit step for
-            // a stepping early exit (also a sweep checkpoint), the schedule
-            // length for a natural completion. History records this.
+            // a stepping early exit, the schedule length for a natural
+            // completion. History records this.
             val steps: Int = 0,
         ) : GenerationState()
         data class Error(val message: String) : GenerationState()
     }
 
-    // Extras for the active sweep run: target steps and the interval between
-    // checkpoint decodes (the run's schedule is target + 2*interval for a
-    // 3-image sweep).
-    var sweepTarget = 0
-    var sweepInterval = 0
-
     // Stepping: the completed-step count at which the engine starts pausing
     // (the user's visible step count; the schedule runs longer).
     var pauseAt = 0
-
-    // Checkpoint images decoded so far in the active sweep run.
-    val sweepImages = mutableListOf<GenerationState.SweepImage>()
 
     private fun updateState(newState: GenerationState) {
         _generationState.value = newState
@@ -195,13 +179,10 @@ class BackgroundGenerationService : Service() {
         // base-image file so a pending img2img selection in tmp.txt survives.
         val ultrafix = intent.getBooleanExtra("ultrafix", false)
         val ultrafixTileSize = intent.getIntExtra("ultrafix_tile_size", 512)
-        // Generation mode: standard | stepping | sweep (stepping/sweep stream
-        // lightweight CPU-side previews every step).
+        // Generation mode: standard | stepping (stepping streams lightweight
+        // CPU-side previews every step and pauses per step for decisions).
         val generationMode = intent.getStringExtra("generation_mode") ?: "standard"
-        sweepTarget = intent.getIntExtra("sweep_target", 0)
-        sweepInterval = intent.getIntExtra("sweep_interval", 0)
         pauseAt = intent.getIntExtra("pause_at", 0)
-        sweepImages.clear()
         // Backend to talk to: the local backend by default, or a remote host's
         // generation port when running in connected-device mode.
         val backendHost = intent.getStringExtra("backend_host") ?: LOCAL_BACKEND_HOST
@@ -323,7 +304,20 @@ class BackgroundGenerationService : Service() {
 
             val preferences =
                 applicationContext.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
-            val showProcess = preferences.getBoolean("show_diffusion_process", false)
+            // Preview quality for standard runs: off | fast | high (fast =
+            // CPU light previews, high = full VAE decodes). One-time legacy
+            // migration: the old "show_diffusion_process" switch maps to
+            // high when it was on; otherwise the new default (fast) applies.
+            var previewQuality = preferences.getString("preview_quality", null)
+            if (previewQuality == null) {
+                previewQuality =
+                    if (preferences.getBoolean("show_diffusion_process", false)) {
+                        "high"
+                    } else {
+                        "fast"
+                    }
+                preferences.edit().putString("preview_quality", previewQuality).apply()
+            }
             val showStride = preferences.getInt("show_diffusion_stride", 1)
 
             val jsonObject = JSONObject().apply {
@@ -339,24 +333,42 @@ class BackgroundGenerationService : Service() {
                 put("denoise_strength", denoiseStrength)
                 put("use_opencl", useOpenCL)
                 put("scheduler", scheduler)
-                // Ultrafix never streams NPU-decoded previews: each one would
-                // tile-decode the full image (the backend rejects it as well).
-                // Stepping/sweep stream CPU-side light previews every step
-                // regardless (no NPU contention, works in lowram too).
-                if (generationMode != "standard") {
-                    put("generation_mode", generationMode)
-                    put("light_previews", true)
-                    put("show_diffusion_process", true)
-                    put("show_diffusion_stride", 1)
+                // Preview policy (the 3-way selector in model settings):
+                // - Ultrafix never streams previews: each NPU decode would
+                //   tile-decode the full image (the backend rejects it too).
+                // - Stepping streams CPU-side light previews every step
+                //   regardless (no NPU contention, works in lowram too) —
+                //   the pause display depends on them.
+                // - Standard runs follow the preview-quality selector. The
+                //   engine gives light_previews precedence over
+                //   show_diffusion_process, so "high" must send
+                //   light_previews=false or it would silently degrade to CPU
+                //   previews.
+                if (ultrafix) {
+                    put("light_previews", false)
+                    put("show_diffusion_process", false)
                 } else {
-                    put("show_diffusion_process", if (ultrafix) false else showProcess)
-                    put("show_diffusion_stride", showStride)
-                }
-                if (generationMode == "sweep") {
-                    put("sweep_target", sweepTarget)
-                    put("sweep_interval", sweepInterval)
+                    when (previewQuality) {
+                        "off" -> {
+                            put("light_previews", false)
+                            put("show_diffusion_process", false)
+                        }
+
+                        "high" -> {
+                            put("light_previews", false)
+                            put("show_diffusion_process", true)
+                            put("show_diffusion_stride", showStride)
+                        }
+
+                        // "fast": CPU light previews every step.
+                        else -> {
+                            put("light_previews", true)
+                            put("show_diffusion_process", false)
+                        }
+                    }
                 }
                 if (generationMode == "stepping") {
+                    put("generation_mode", generationMode)
                     put("pause_at", pauseAt)
                 }
                 if (ultrafix) {
@@ -474,38 +486,6 @@ class BackgroundGenerationService : Service() {
                                     updateNotification(progress)
                                 }
 
-                                "sweep" -> {
-                                    // Sweep checkpoint: a full-quality image
-                                    // decoded mid-run. Collect it (saved at
-                                    // completion) and show it in the live
-                                    // preview card.
-                                    val b64Img = message.optString("image")
-                                    if (b64Img.isNotEmpty()) {
-                                        val imageBytes =
-                                            Base64.getDecoder().decode(b64Img)
-                                        val bitmap =
-                                            BitmapFactory.decodeByteArray(
-                                                imageBytes,
-                                                0,
-                                                imageBytes.size,
-                                            ) ?: throw IOException(
-                                                "Failed to decode sweep image",
-                                            )
-                                        val index = message.optInt("index", 1)
-                                        val sweepSteps = sweepTarget +
-                                            (index - 1) * sweepInterval
-                                        sweepImages.add(
-                                            GenerationState.SweepImage(bitmap, sweepSteps),
-                                        )
-                                        updateState(
-                                            GenerationState.Progress(
-                                                lastProgress,
-                                                bitmap,
-                                            )
-                                        )
-                                    }
-                                }
-
                                 "complete" -> {
                                     Log.d(
                                         "BgGenService",
@@ -587,11 +567,9 @@ class BackgroundGenerationService : Service() {
                                             bitmap,
                                             returnedSeed,
                                             nsfwScore,
-                                            sweepImages.toList(),
                                             message.optInt("steps", 0),
                                         ),
                                     )
-                                    sweepImages.clear()
 
                                     Log.d(
                                         "BgGenService",
