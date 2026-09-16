@@ -703,6 +703,11 @@ inline void Pipeline::observeDecodePair(
     const int bw = pw / lw;
     const float *lat = vae_latents.data();
     const float *pix = pixels.data();
+    // pixels are CHW ([1,3,H,W], see pixelsToBytes' transpose) — the channel
+    // plane stride is ph*pw, NOT interleaved. Indexing RGB as consecutive
+    // floats reads the same channel three times and the fit collapses to
+    // grey (shipped in 69079d4, fixed here).
+    const size_t pplane = static_cast<size_t>(ph) * pw;
     const size_t plane = static_cast<size_t>(lh) * lw;
 
     for (int ly = 0; ly < lh; ++ly) {
@@ -714,10 +719,10 @@ inline void Pipeline::observeDecodePair(
           const size_t prow =
               static_cast<size_t>(ly * bh + dy) * pw + lx * bw;
           for (int dx = 0; dx < bw; ++dx) {
-            const size_t pidx = (prow + dx) * 3;
+            const size_t pidx = prow + dx;
             y[0] += pix[pidx];
-            y[1] += pix[pidx + 1];
-            y[2] += pix[pidx + 2];
+            y[1] += pix[pplane + pidx];
+            y[2] += pix[2 * pplane + pidx];
           }
         }
         const float inv = 1.0f / static_cast<float>(bh * bw);
@@ -806,7 +811,8 @@ inline void Pipeline::saveCalibration() const {
     std::ofstream f(model_dir_ + "/light_preview_cal.bin",
                     std::ios::binary | std::ios::trunc);
     if (!f) return;
-    const uint32_t magic = 0x4C504332u;  // "LPC2"
+    const uint32_t magic = 0x4C504333u;  // "LPC3" (LPC2 files predate the
+                                         // CHW pixel-index fix — poisoned)
     const int32_t frames = cal_frames_;
     f.write(reinterpret_cast<const char *>(&magic), sizeof(magic));
     f.write(reinterpret_cast<const char *>(&frames), sizeof(frames));
@@ -828,7 +834,7 @@ inline void Pipeline::loadCalibration() {
     int32_t frames = 0;
     f.read(reinterpret_cast<char *>(&magic), sizeof(magic));
     f.read(reinterpret_cast<char *>(&frames), sizeof(frames));
-    if (!f || magic != 0x4C504332u || frames < 0) return;
+    if (!f || magic != 0x4C504333u || frames < 0) return;
     f.read(reinterpret_cast<char *>(cal_xx_), sizeof(cal_xx_));
     f.read(reinterpret_cast<char *>(cal_xy_), sizeof(cal_xy_));
     if (!f) {
