@@ -11,7 +11,9 @@ only fork-side changes are listed below.
   1st/99th-percentile contrast bounds, a fixed tone curve, mild
   desaturation toward luma, bilinear upscaling, and JPEG q85 — taming the
   raw latent-to-RGB mapping's "neon" look at the same few-ms CPU cost
-  (design doc §5.3).
+  (design doc §5.3). First device feedback: composition clearly improved;
+  residual green skew and bilinear softness addressed with per-channel
+  gains and a mild unsharp mask (L1.5 tuning knobs).
 
 ### Fixed
 - Generation history recorded one more step than the slider value (txt2img

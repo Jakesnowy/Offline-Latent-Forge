@@ -892,6 +892,14 @@ inline std::string Pipeline::renderLightPreview(const GenerationRequest &req,
     constexpr float kPreviewGamma = 0.9f;         // <1 lifts midtones softly
     constexpr float kPreviewDesaturation = 0.15f; // 0 = raw channel colors
     constexpr int kPreviewJpegQuality = 85;
+    // Device finding 2026-09-16: previews skew strongly green — latent ch1
+    // maps greener than true green under the arbitrary ch0-2→RGB assignment
+    // (only the L2 color matrix fixes this properly, see backlog A6).
+    // Counteract with per-channel output gains; G cut hardest.
+    constexpr float kPreviewChannelGains[3] = {1.02f, 0.85f, 1.02f};
+    // Mild unsharp after bilinear; restores edge crispness lost to the
+    // smoother resampling (0 disables).
+    constexpr float kPreviewSharpen = 0.3f;
 
     xt::xarray<float> lat = latents;
     latentsToVae(lat);
@@ -966,14 +974,46 @@ inline std::string Pipeline::renderLightPreview(const GenerationRequest &req,
               curve[static_cast<int>(t * 255.0f + 0.5f)];
         }
 
-        // Mild desaturation toward luma softens the neon saturation.
+        // Per-channel gains counteract the green skew (see constants), then
+        // mild desaturation toward luma softens the neon saturation.
+        float gained[3];
+        for (int c = 0; c < 3; ++c) {
+          gained[c] =
+              std::clamp(norm[c] * kPreviewChannelGains[c], 0.0f, 1.0f);
+        }
         const float luma =
-            0.299f * norm[0] + 0.587f * norm[1] + 0.114f * norm[2];
+            0.299f * gained[0] + 0.587f * gained[1] + 0.114f * gained[2];
         for (int c = 0; c < 3; ++c) {
           const float softened =
-              luma + (norm[c] - luma) * (1.0f - kPreviewDesaturation);
+              luma + (gained[c] - luma) * (1.0f - kPreviewDesaturation);
           out_data[(static_cast<size_t>(y) * out_w + x) * 3 + c] =
               static_cast<uint8_t>(std::clamp(softened * 255.0f, 0.0f, 255.0f));
+        }
+      }
+    }
+
+    // Mild unsharp mask (cross kernel) restores the edge crispness that
+    // bilinear resampling smooths away — the "grain size increase" from the
+    // first device pass. Disabled when the constant is 0.
+    if constexpr (kPreviewSharpen > 0.0f) {
+      const std::vector<uint8_t> src = out_data;
+      auto sample = [&](int y, int x, int c) {
+        y = std::clamp(y, 0, out_h - 1);
+        x = std::clamp(x, 0, out_w - 1);
+        return src[(static_cast<size_t>(y) * out_w + x) * 3 + c];
+      };
+      for (int y = 0; y < out_h; ++y) {
+        for (int x = 0; x < out_w; ++x) {
+          for (int c = 0; c < 3; ++c) {
+            const float center = static_cast<float>(sample(y, x, c));
+            const float blur = 0.25f * (sample(y - 1, x, c) +
+                                        sample(y + 1, x, c) +
+                                        sample(y, x - 1, c) +
+                                        sample(y, x + 1, c));
+            const float sharp = center + kPreviewSharpen * (center - blur);
+            out_data[(static_cast<size_t>(y) * out_w + x) * 3 + c] =
+                static_cast<uint8_t>(std::clamp(sharp + 0.5f, 0.0f, 255.0f));
+          }
         }
       }
     }
