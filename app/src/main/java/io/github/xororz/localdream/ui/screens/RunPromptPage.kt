@@ -112,6 +112,14 @@ internal fun RunPromptPage(
     val msgImportNoParams = stringResource(R.string.import_no_params)
     val msgPleaseCropFirst = stringResource(R.string.please_crop_first)
 
+    // Held (instead of an inline rememberScrollState()) so a run start can
+    // scroll the progress card — the page's first element — fully into view:
+    // the generate button lives far below it.
+    val pageScrollState = rememberScrollState()
+    LaunchedEffect(runState.isRunning) {
+        if (runState.isRunning) pageScrollState.animateScrollTo(0)
+    }
+
 
         Column(
             modifier = Modifier
@@ -120,7 +128,7 @@ internal fun RunPromptPage(
                 // keyboard; the focused prompt field is then scrolled above the IME
                 // (which also keeps its window position accurate for the popup).
                 .imePadding()
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(pageScrollState)
                 .padding(horizontal = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -144,7 +152,7 @@ internal fun RunPromptPage(
                                     stringResource(
                                         R.string.generating,
                                     )
-                                } (${runState.currentBatchIndex}/${runState.batchCounts})…"
+                                } (${runState.currentBatchIndex}/${runState.batchTotal.coerceAtLeast(1)})…"
                             } else {
                                 stringResource(
                                     R.string.generating,

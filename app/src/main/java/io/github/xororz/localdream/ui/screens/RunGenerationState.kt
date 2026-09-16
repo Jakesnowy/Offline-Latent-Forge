@@ -26,6 +26,11 @@ class RunGenerationState {
     var aspectRatio by mutableStateOf(GenerationDefaults.GLOBAL.aspectRatio)
     var showCustomAspectRatioDialog by mutableStateOf(false)
     var currentBatchIndex by mutableIntStateOf(0)
+    // Total runs in the active batch plan (sweep = 3; standard batch =
+    // batchCounts unless a fixed seed locks it to 1; single-run paths like
+    // ultrafix = 1). 0 = no plan is running. The progress card shows
+    // currentBatchIndex/batchTotal.
+    var batchTotal by mutableIntStateOf(0)
 
     // img2img input: picked source image plus the tmp.txt base64 encode flag.
     var selectedImageUri by mutableStateOf<Uri?>(null)

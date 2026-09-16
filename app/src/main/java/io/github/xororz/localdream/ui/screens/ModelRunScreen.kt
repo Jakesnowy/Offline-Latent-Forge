@@ -823,6 +823,8 @@ fun ModelRunScreen(
                     File(context.filesDir, "ultrafix.txt").writeText(bitmapToBase64Jpeg(bmp))
                 }
                 ultrafixState.pendingUltrafix = true
+                runState.currentBatchIndex = 0
+                runState.batchTotal = 1
                 val intent = Intent(context, BackgroundGenerationService::class.java).apply {
                     putExtra("prompt", ultrafixPrompt)
                     putExtra("negative_prompt", negativePromptField.text)
@@ -1049,6 +1051,7 @@ fun ModelRunScreen(
             runState.progress = 0f
             runState.errorMessage = null
             runState.currentBatchIndex = 0
+            runState.batchTotal = 0
             runState.generationStartTime = null
             BackgroundGenerationService.resetState()
             coroutineScope.launch {
@@ -1079,6 +1082,7 @@ fun ModelRunScreen(
         runState.isRunning = false
         runState.progress = 0f
         runState.currentBatchIndex = 0
+        runState.batchTotal = 0
         runState.generationStartTime = null
         Toast.makeText(
             context,
@@ -1586,6 +1590,9 @@ fun ModelRunScreen(
                 runState.seed.isNotBlank() -> 1
                 else -> runState.batchCounts
             }
+            // Display total for the progress card (currentBatchIndex/total);
+            // differs from the batchCounts setting for sweep and fixed-seed runs.
+            runState.batchTotal = actualBatchCount
             for (i in 0 until actualBatchCount) {
                 // Sweep: this run's position on the step ladder (S, S+i, S+2i).
                 val runSteps =
@@ -1709,6 +1716,7 @@ fun ModelRunScreen(
                 )
             }
             runState.currentBatchIndex = 0
+            runState.batchTotal = 0
             runState.isRunning = false
             Log.d(
                 "ModelRunScreen",

@@ -147,6 +147,12 @@ internal fun RunAdvancedSettingsCard(
         )
     }
 
+    // Local mirror of the persisted sweep interval (see selectedMode): the
+    // slider must track a drag immediately and pref writes don't recompose.
+    var sweepIntervalMirror by remember(sweepInterval) {
+        mutableIntStateOf(sweepInterval)
+    }
+
     // Last free (seed-less) batch position, restored when the seed is cleared.
     var retainedBatch by rememberSaveable { mutableFloatStateOf(1f) }
     var showBatchSeedDialog by remember { mutableStateOf(false) }
@@ -304,14 +310,20 @@ internal fun RunAdvancedSettingsCard(
                 if (activeMode == "sweep") {
                     // Sweep interval: how many steps between checkpoint
                     // decodes after the target is reached (1..5).
+                    // sweepIntervalMirror is the card-level mirror (see
+                    // selectedMode): it tracks the drag immediately.
                     Column {
                         Text(
-                            stringResource(R.string.sweep_interval, sweepInterval),
+                            stringResource(R.string.sweep_interval, sweepIntervalMirror),
                             style = MaterialTheme.typography.bodyMedium,
                         )
                         Slider(
-                            value = sweepInterval.toFloat(),
-                            onValueChange = { onSweepIntervalChange(it.roundToInt()) },
+                            value = sweepIntervalMirror.toFloat(),
+                            onValueChange = { value ->
+                                val interval = value.roundToInt()
+                                sweepIntervalMirror = interval
+                                onSweepIntervalChange(interval)
+                            },
                             valueRange = 1f..5f,
                             steps = 3,
                             modifier = Modifier.fillMaxWidth(),
