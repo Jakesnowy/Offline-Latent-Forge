@@ -6,6 +6,20 @@ only fork-side changes are listed below.
 
 ## [Unreleased]
 
+### Changed
+- Light-preview L2 hardening (pre-release audit): the per-model calibration
+  file is now written once when calibration first becomes usable and then
+  only every 64 observed frames instead of after every decode (bounded flash
+  wear, no synchronous write per step under Full-quality previews); the fit
+  uses an exponential forgetting factor (0.95) so it keeps tracking the
+  loaded checkpoint and the accumulated sums stay bounded; the 5×5 solve
+  gained a tiny relative ridge penalty and a relative pivot threshold so a
+  near-constant latent channel can no longer produce garbage coefficients.
+  Existing calibration files remain compatible.
+- Light previews no longer allocate several MB of scratch per frame (the
+  buffers are reused across frames), removing the per-step heap churn in
+  stepping mode.
+
 ### Fixed
 - Host-mode control server no longer blocks its request thread on a full
   models-directory scan: `GET /models` now serves the cached catalog and

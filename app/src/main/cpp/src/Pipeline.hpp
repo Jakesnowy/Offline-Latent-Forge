@@ -320,12 +320,33 @@ class Pipeline {
   // (16 channels) keeps the fallback permanently.
   static constexpr int kCalDims = 5;  // 4 latent channels + bias
   static constexpr int kCalMinFrames = 3;
+  // Exponential forgetting factor (audit 2026-09-16): old observations fade
+  // so the fit keeps tracking the loaded checkpoint and the normal-equation
+  // sums stay bounded and well-conditioned instead of growing forever.
+  static constexpr double kCalDecay = 0.95;
+  // Flash-wear bound (audit 2026-09-16, highest concern): persist the stats
+  // once when the calibration first becomes usable, then only every
+  // kCalSaveInterval observations. With the decay factor late observations
+  // barely move the fit, so interval saves lose almost nothing; the file is
+  // only a warm start — worst case the fit re-accrues in a few frames.
+  static constexpr int kCalSaveInterval = 64;
   double cal_xx_[kCalDims][kCalDims] = {};
   double cal_xy_[kCalDims][3] = {};
   int cal_frames_ = 0;
   bool cal_ready_ = false;
   bool cal_loaded_ = false;
   float cal_matrix_[3][kCalDims] = {};
+
+  // Light-preview scratch buffers (audit 2026-09-16): the preview path used
+  // to allocate several MB of scratch per frame (stepping redraws one preview
+  // per step). The pipeline is driven by the single generation thread
+  // (documented single-worker ordering), so members need no synchronization;
+  // reusing capacity removes the large-block heap churn.
+  xt::xarray<float> preview_lat_scratch_;
+  std::vector<float> preview_cal_scratch_;
+  std::vector<float> preview_percentile_scratch_;
+  std::vector<uint8_t> preview_out_scratch_;
+  std::vector<uint8_t> preview_unsharp_scratch_;
   void observeDecodePair(const xt::xarray<float> &vae_latents,
                          const xt::xarray<float> &pixels);
   bool trySolveCalibration();
@@ -710,6 +731,16 @@ inline void Pipeline::observeDecodePair(
     const size_t pplane = static_cast<size_t>(ph) * pw;
     const size_t plane = static_cast<size_t>(lh) * lw;
 
+    // Exponential forgetting: scale the accumulated statistics down before
+    // adding this observation, so recent decodes dominate the fit and the
+    // sums stay bounded (bounded sums also keep the elimination stable).
+    for (auto &row : cal_xx_) {
+      for (double &v : row) v *= kCalDecay;
+    }
+    for (auto &row : cal_xy_) {
+      for (double &v : row) v *= kCalDecay;
+    }
+
     for (int ly = 0; ly < lh; ++ly) {
       for (int lx = 0; lx < lw; ++lx) {
         // Box-average the true decode over this latent cell; the decoder
@@ -748,7 +779,15 @@ inline void Pipeline::observeDecodePair(
     ++cal_frames_;
     if (cal_frames_ >= kCalMinFrames) {
       trySolveCalibration();
-      saveCalibration();
+      // Bounded flash wear: writing every observation put a synchronous file
+      // write on the generation critical path for every frame >= 3 (and one
+      // per step under Full-quality previews). With the decay factor late
+      // observations barely move the fit, so persisting at the first-ready
+      // frame and then only every kCalSaveInterval loses almost nothing.
+      if (cal_frames_ == kCalMinFrames ||
+          cal_frames_ % kCalSaveInterval == 0) {
+        saveCalibration();
+      }
     }
   } catch (const std::exception &e) {
     QNN_WARN("Light preview calibration observe failed: %s", e.what());
@@ -766,12 +805,31 @@ inline bool Pipeline::trySolveCalibration() {
     for (int j = 0; j < kCalDims; ++j) a[i][j] = cal_xx_[i][j];
     for (int j = 0; j < 3; ++j) b[i][j] = cal_xy_[i][j];
   }
+  // Tiny relative ridge on the latent diagonals (bias excluded) — audit
+  // 2026-09-16: without it, a near-constant latent channel (barely varies
+  // across observations) leaves the system near-singular and the elimination
+  // produces exploding or silently-garbage coefficients; the old absolute
+  // 1e-9 pivot cutoff never fires because the diagonal grows with the
+  // accumulated scale. The penalty is relative to that scale, so it adapts
+  // to however many (decayed) observations are in the sums and only bites
+  // on genuinely ill-conditioned dimensions.
+  double diag_mean = 0.0;
+  for (int i = 0; i < kCalDims - 1; ++i) diag_mean += a[i][i];
+  diag_mean /= (kCalDims - 1);
+  const double ridge = 1e-6 * std::max(diag_mean, 1.0);
+  for (int i = 0; i < kCalDims - 1; ++i) a[i][i] += ridge;
+  double scale0 = 0.0;
+  for (int i = 0; i < kCalDims; ++i) {
+    scale0 = std::max(scale0, std::abs(a[i][i]));
+  }
   for (int col = 0; col < kCalDims; ++col) {
     int pivot = col;
     for (int r = col + 1; r < kCalDims; ++r) {
       if (std::abs(a[r][col]) > std::abs(a[pivot][col])) pivot = r;
     }
-    if (std::abs(a[pivot][col]) < 1e-9) return false;
+    // Relative threshold: elimination shrinks magnitudes column by column,
+    // so an absolute cutoff is meaningless against an accumulated sum.
+    if (std::abs(a[pivot][col]) < 1e-12 * scale0) return false;
     if (pivot != col) {
       for (int j = 0; j < kCalDims; ++j) std::swap(a[col][j], a[pivot][j]);
       for (int j = 0; j < 3; ++j) std::swap(b[col][j], b[pivot][j]);
@@ -1110,22 +1168,22 @@ inline std::string Pipeline::renderLightPreview(const GenerationRequest &req,
     // the conditional mean, which shrinks extremes; this restores punch.
     constexpr float kCalibratedContrast = 1.15f;
 
-    xt::xarray<float> lat = latents;
-    latentsToVae(lat);
-    const auto shape = lat.shape();
+    preview_lat_scratch_ = latents;  // reusable scratch; latentsToVae mutates
+    latentsToVae(preview_lat_scratch_);
+    const auto shape = preview_lat_scratch_.shape();
     const int lh = static_cast<int>(shape[2]);
     const int lw = static_cast<int>(shape[3]);
     const int out_w = req.width;
     const int out_h = req.height;
     const size_t n = static_cast<size_t>(lh) * lw;
-    const float *data = lat.data();
+    const float *data = preview_lat_scratch_.data();
 
     // Self-calibrating L2 (design doc §5.5): once enough real VAE decodes
     // have been observed (and persisted per model), replace the ch0-2
     // heuristic with the fitted 4-channel linear color map.
     loadCalibration();
     const bool calibrated = cal_ready_ && latentChannels() == 4;
-    std::vector<float> cal_rgb;
+    std::vector<float> &cal_rgb = preview_cal_scratch_;
     if (calibrated) {
       cal_rgb.resize(3 * n);
       for (size_t i = 0; i < n; ++i) {
@@ -1148,7 +1206,7 @@ inline std::string Pipeline::renderLightPreview(const GenerationRequest &req,
     // (4k-16k samples), so this stays well under a millisecond.
     float lows[3] = {0.0f, 0.0f, 0.0f};
     float highs[3] = {0.0f, 0.0f, 0.0f};
-    std::vector<float> vals;
+    std::vector<float> &vals = preview_percentile_scratch_;
     if (!calibrated) {
       vals.reserve(n);
       for (int c = 0; c < 3; ++c) {
@@ -1176,7 +1234,8 @@ inline std::string Pipeline::renderLightPreview(const GenerationRequest &req,
       curve[i] = std::pow(static_cast<float>(i) / 255.0f, kPreviewGamma);
     }
 
-    std::vector<uint8_t> out_data(3 * out_w * out_h);
+    std::vector<uint8_t> &out_data = preview_out_scratch_;
+    out_data.resize(static_cast<size_t>(3) * out_w * out_h);
     for (int y = 0; y < out_h; ++y) {
       // Bilinear source coordinates, shared by all three channels.
       const float fy = (out_h > 1)
@@ -1245,7 +1304,8 @@ inline std::string Pipeline::renderLightPreview(const GenerationRequest &req,
     // bilinear resampling smooths away — the "grain size increase" from the
     // first device pass. Disabled when the constant is 0.
     if constexpr (kPreviewSharpen > 0.0f) {
-      const std::vector<uint8_t> src = out_data;
+      preview_unsharp_scratch_.assign(out_data.begin(), out_data.end());
+      const std::vector<uint8_t> &src = preview_unsharp_scratch_;
       auto sample = [&](int y, int x, int c) {
         y = std::clamp(y, 0, out_h - 1);
         x = std::clamp(x, 0, out_w - 1);
@@ -1280,8 +1340,9 @@ inline std::string Pipeline::renderLightPreview(const GenerationRequest &req,
       final_w = req.target_crop_width;
       final_h = req.target_crop_height;
     }
-    out_data = encodeJPEG(out_data, final_w, final_h, kPreviewJpegQuality);
-    std::string image_str_result(out_data.begin(), out_data.end());
+    const std::vector<uint8_t> jpeg =
+        encodeJPEG(out_data, final_w, final_h, kPreviewJpegQuality);
+    std::string image_str_result(jpeg.begin(), jpeg.end());
     return base64_encode(image_str_result);
   } catch (const std::exception &e) {
     QNN_WARN("Light preview generation failed: %s", e.what());
