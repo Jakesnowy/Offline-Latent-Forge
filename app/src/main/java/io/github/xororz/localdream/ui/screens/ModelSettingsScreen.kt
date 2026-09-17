@@ -467,11 +467,16 @@ internal fun ModelSettingsScreen(
                             remember { TagAutocompleteRepository.getInstance(context) }
                         val tagDictState by tagRepository.state.collectAsState()
                         var tagImportInProgress by remember { mutableStateOf(false) }
-                        var tagDownloadStarted by remember { mutableStateOf(false) }
+                        // One-shot counter, NOT a boolean the effect resets:
+                        // the reset re-keys a LaunchedEffect keyed on the
+                        // same value and cancels the download mid-flight at
+                        // its first suspension point (device finding
+                        // 2026-09-17: every download died with a coroutine
+                        // cancellation error toast).
+                        var tagDownloadTrigger by remember { mutableStateOf(0) }
                         var tagDownloadProgress by remember { mutableStateOf<Float?>(null) }
-                        LaunchedEffect(tagDownloadStarted) {
-                            if (!tagDownloadStarted) return@LaunchedEffect
-                            tagDownloadStarted = false
+                        LaunchedEffect(tagDownloadTrigger) {
+                            if (tagDownloadTrigger == 0) return@LaunchedEffect
                             tagImportInProgress = true
                             try {
                                 val file = downloadTagDictionaryCsv(context) { fraction ->
@@ -493,6 +498,10 @@ internal fun ModelSettingsScreen(
                                     is ImportResult.Error -> msgTagImportFailed
                                 }
                                 Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                            } catch (e: kotlinx.coroutines.CancellationException) {
+                                // Scope death (screen left): never mask it
+                                // as a download failure.
+                                throw e
                             } catch (e: Exception) {
                                 Log.e("TagCsvDownload", "Download failed", e)
                                 Toast.makeText(
@@ -782,7 +791,7 @@ internal fun ModelSettingsScreen(
                                         // flavor ships its own dictionary).
                                         if (BuildConfig.FLAVOR == "basic") {
                                             OutlinedButton(
-                                                onClick = { tagDownloadStarted = true },
+                                                onClick = { tagDownloadTrigger++ },
                                                 enabled = !tagImportInProgress,
                                                 modifier = Modifier.weight(1f),
                                             ) {

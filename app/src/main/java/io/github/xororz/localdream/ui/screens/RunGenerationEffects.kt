@@ -174,12 +174,16 @@ internal fun RunGenerationEffects(
                     runState.generationStartTime = null
 
                     // Navigate to the results page when the run is over — but
-                    // not mid-batch: sweep and multi-image batches complete
-                    // run-by-run and the remaining runs' progress lives on the
-                    // prompt page. Stepping finishes as a single run, so its
-                    // early exit (Finish) reaches the results page even with
-                    // the advanced panel open (its controls live there).
-                    val isLastRun = runState.currentBatchIndex <= 1 ||
+                    // not mid-batch: sweep completes run-by-run and the
+                    // remaining runs' progress lives on the prompt page.
+                    // Device finding 2026-09-17: the old `currentBatchIndex
+                    // <= 1` clause also matched sweep run 1 (the index is
+                    // 1-based), bouncing to the results page after the
+                    // first sweep run and back mid-plan. Stepping finishes
+                    // as a single run, so its early exit (Finish) reaches
+                    // the results page even with the advanced panel open
+                    // (its controls live there).
+                    val isLastRun = runState.batchTotal <= 1 ||
                         runState.currentBatchIndex >= runState.batchTotal
                     if (pagerState.currentPage == 0 && isLastRun) {
                         try {

@@ -47,6 +47,7 @@
     <string name="sweep_interval">间隔: %d</string>
     <string name="steps_range">步数: %s</string>
     <string name="generation_cancelled">生成已取消</string>
+<string name="stepping_cancel_failed">取消请求未能送达引擎 — 请重试</string>
     <string name="sdxl_lowram">SDXL 低内存模式</string>
     <string name="sdxl_lowram_hint">仅 SDXL 生效：按需加载每个模型，用完即释放。小于 16GB 内存的设备建议开启。开启后将禁用生成过程预览。</string>
     <string name="anima_lowram">Anima 低内存模式</string>

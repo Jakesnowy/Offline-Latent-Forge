@@ -21,6 +21,19 @@ only fork-side changes are listed below.
   stepping mode.
 
 ### Fixed
+- The tag-dictionary download (basic flavor) failed on every attempt with a
+  coroutine-cancellation error: the download effect reset its own trigger
+  state, cancelling itself at the first suspension point. It now uses a
+  one-shot counter trigger and no longer masks scope cancellation as a
+  download failure.
+- Cancelling a stepping run could leave the progress card stuck on the
+  stepping controls when the cancel request never reached the engine; the
+  request now retries briefly and surfaces a localized failure message so
+  the cancel can be retried.
+- Sweep mode navigated to the results page after the first run, stayed for
+  the second, then navigated again after the third; the results page is now
+  only shown after the final sweep run, with the remaining runs' progress
+  staying on the prompt page as designed.
 - Host-mode control server no longer blocks its request thread on a full
   models-directory scan: `GET /models` now serves the cached catalog and
   refreshes in the background (host-mode start also warms the scan in the

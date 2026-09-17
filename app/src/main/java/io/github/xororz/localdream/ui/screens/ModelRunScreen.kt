@@ -753,32 +753,55 @@ fun ModelRunScreen(
     // base image goes through its own file so a pending img2img selection in
     // tmp.txt is left untouched.
     // Stepping mode: deliver the user's in-card decision to the engine's
-    // control endpoint (auth-guarded on remote hosts).
+    // control endpoint (auth-guarded on remote hosts). An abort that never
+    // reaches the engine leaves the progress card stuck on the stepping
+    // controls — no error event will ever arrive (device finding
+    // 2026-09-17) — so aborts retry briefly and surface the failure.
+    val msgSteppingCancelFailed =
+        stringResource(R.string.stepping_cancel_failed)
     fun sendSteppingDecision(decision: String) {
         coroutineScope.launch(Dispatchers.IO) {
-            try {
-                val body = JSONObject().put("decision", decision).toString()
-                val request = Request.Builder()
-                    .url("http://$backendHost/generation/control")
-                    .apply {
-                        backendAuthToken?.let {
-                            RemoteProtocol.addAuth(this, it)
+            val attempts = if (decision == "abort") 3 else 1
+            var delivered = false
+            for (attempt in 1..attempts) {
+                try {
+                    val body = JSONObject().put("decision", decision).toString()
+                    val request = Request.Builder()
+                        .url("http://$backendHost/generation/control")
+                        .apply {
+                            backendAuthToken?.let {
+                                RemoteProtocol.addAuth(this, it)
+                            }
                         }
+                        .post(
+                            body.toRequestBody(
+                                "application/json".toMediaTypeOrNull(),
+                            ),
+                        )
+                        .build()
+                    OkHttpClient().newCall(request).execute().use { resp ->
+                        Log.d(
+                            "ModelRunScreen",
+                            "stepping decision '$decision' -> HTTP ${resp.code}",
+                        )
+                        delivered = resp.isSuccessful
                     }
-                    .post(
-                        body.toRequestBody(
-                            "application/json".toMediaTypeOrNull(),
-                        ),
-                    )
-                    .build()
-                OkHttpClient().newCall(request).execute().use { resp ->
-                    Log.d(
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.e(
                         "ModelRunScreen",
-                        "stepping decision '$decision' -> HTTP ${resp.code}",
+                        "stepping decision failed (attempt $attempt/$attempts)",
+                        e,
                     )
                 }
-            } catch (e: Exception) {
-                Log.e("ModelRunScreen", "stepping decision failed", e)
+                if (delivered) break
+                if (attempt < attempts) delay(1000)
+            }
+            if (!delivered && decision == "abort") {
+                withContext(Dispatchers.Main) {
+                    runState.errorMessage = msgSteppingCancelFailed
+                }
             }
         }
     }

@@ -47,6 +47,7 @@
     <string name="sweep_interval">間隔: %d</string>
     <string name="steps_range">ステップ数: %s</string>
     <string name="generation_cancelled">生成をキャンセルしました</string>
+<string name="stepping_cancel_failed">キャンセル要求がエンジンに届きませんでした — もう一度お試しください</string>
     <string name="sdxl_lowram">SDXL 低メモリモード</string>
     <string name="sdxl_lowram_hint">SDXL 専用：各モデルを必要時にのみ読み込み、使用後に解放します。16GB 未満のデバイスでは有効化してください。生成途中のプレビューは無効になります。</string>
     <string name="anima_lowram">Anima 低メモリモード</string>

@@ -49,6 +49,7 @@
     <string name="sweep_interval">Interval: %d</string>
     <string name="steps_range">Steps: %s</string>
     <string name="generation_cancelled">Generation cancelled</string>
+<string name="stepping_cancel_failed">Couldn\'t reach the engine to cancel — try again</string>
     <string name="sdxl_lowram">SDXL low RAM mode</string>
     <string name="sdxl_lowram_hint">For SDXL only: load each model on demand and free it after use. Required on devices with less than 16GB RAM. Disables in-progress preview.</string>
     <string name="anima_lowram">Anima low RAM mode</string>
