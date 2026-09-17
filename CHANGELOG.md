@@ -6,6 +6,15 @@ only fork-side changes are listed below.
 
 ## [Unreleased]
 
+### Fixed
+- Host-mode control server no longer blocks its request thread on a full
+  models-directory scan: `GET /models` now serves the cached catalog and
+  refreshes in the background (host-mode start also warms the scan in the
+  background), so concurrent controller requests (e.g. `/status` polling)
+  no longer stall while models are scanned. Only the first request right
+  after enabling host mode waits for the initial scan, since no catalog is
+  cached yet; `/select` likewise only waits when the catalog isn't loaded.
+
 ## [2.8.2] - 2026-09-16
 
 ### Changed

@@ -28,8 +28,13 @@ import java.io.File
 import java.io.IOException
 import java.net.Inet4Address
 import java.net.NetworkInterface
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 
@@ -45,6 +50,16 @@ import org.json.JSONObject
  */
 class RemoteHostService : Service() {
     private var server: RemoteHostServer? = null
+
+    // Fire-and-forget scope for model scans moved off the control-server
+    // request path: a full models-dir walk takes long enough that running it
+    // on the single server worker thread stalls concurrent /status polling.
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    // Handlers run on the single server worker thread, so this flag needs no
+    // atomics; it only stops one background refresh piling up per poll.
+    @Volatile
+    private var refreshInFlight = false
 
     // Model id of the most recent /select. /stop requests carry the id they
     // intend to stop; a late-arriving stop for a superseded selection is
@@ -84,6 +99,15 @@ class RemoteHostService : Service() {
             }
             server = newServer
             updateState(running = true)
+            // Warm the model catalog in the background so an early /models
+            // request usually finds it loaded without blocking the worker.
+            serviceScope.launch {
+                try {
+                    ModelRepository.getInstance(applicationContext).refreshAllModels()
+                } catch (e: Exception) {
+                    Log.w(TAG, "background model scan failed", e)
+                }
+            }
             // Bring BackendService up as a foreground service now, while the
             // app is still visible (the user just tapped the button). Later
             // remote /select commands then reach a live FGS via plain
@@ -107,6 +131,7 @@ class RemoteHostService : Service() {
         super.onDestroy()
         server?.shutdown()
         server = null
+        serviceScope.cancel()
         // Flip the flag before stopping the backend so its stop-grace logic
         // no longer keeps the service alive for host mode.
         updateState(running = false)
@@ -138,6 +163,20 @@ class RemoteHostService : Service() {
         stopSelf()
     }
 
+    private fun requestBackgroundRefresh(repository: ModelRepository) {
+        if (refreshInFlight) return
+        refreshInFlight = true
+        serviceScope.launch {
+            try {
+                repository.refreshAllModels()
+            } catch (e: Exception) {
+                Log.w(TAG, "background model refresh failed", e)
+            } finally {
+                refreshInFlight = false
+            }
+        }
+    }
+
     private inner class ApiHandler : RemoteHostServer.Handler {
         override fun info(): JSONObject = RemoteHostInfo(
             protocol = RemoteProtocol.PROTOCOL_VERSION,
@@ -148,9 +187,24 @@ class RemoteHostService : Service() {
         override fun models(): JSONObject {
             val context = applicationContext
             val repository = ModelRepository.getInstance(context)
-            // Full re-scan so models downloaded/imported after host mode
-            // started are visible; /models is called rarely.
-            runBlocking { repository.refreshAllModels() }
+            // The catalog is served from the repository's last scan; a full
+            // re-scan runs in the background so models downloaded, imported
+            // or dropped into the models dir after host mode started become
+            // visible by the next poll — without stalling the single server
+            // worker (and with it, concurrent /status polling) for the walk.
+            // Only the very first request after host mode start waits (on
+            // the warm-up scan), because there is nothing cached to serve.
+            if (repository.isLoaded) {
+                requestBackgroundRefresh(repository)
+            } else {
+                runBlocking {
+                    try {
+                        repository.ensureLoaded()
+                    } catch (e: Exception) {
+                        Log.w(TAG, "initial model scan failed", e)
+                    }
+                }
+            }
             val preferences = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
             val catalog = RemoteCatalog(
                 useImg2img = preferences.getBoolean("use_img2img", true),
@@ -171,7 +225,12 @@ class RemoteHostService : Service() {
                 backendType = BackendService.BACKEND_TYPE_UPSCALER
             } else {
                 val repository = ModelRepository.getInstance(applicationContext)
-                runBlocking { repository.ensureLoaded() }
+                // ensureLoaded is a no-op once the catalog is loaded; only a
+                // rare early select right after host mode start blocks on
+                // the warm-up scan.
+                if (!repository.isLoaded) {
+                    runBlocking { repository.ensureLoaded() }
+                }
                 val model = repository.models.find { it.id == modelId && it.isDownloaded }
                     ?: return RemoteHostServer.Response(
                         404,
